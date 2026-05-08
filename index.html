@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>FT</title>
+  </head>
+  <body>
+    <div id="app">
+      <div class="viewport" data-canvas></div>
+      <div class="scroll-proxy" aria-hidden="true"></div>
+      <div class="boot-loader" data-boot aria-live="polite" aria-busy="true">
+        <div class="boot-loader__ascii" aria-hidden="true"></div>
+        <span class="boot-loader__status" data-boot-label>Booting reverse-engineering workspace...</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "ft",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "gsap": "^3.14.2",
+    "lenis": "^1.1.20",
+    "three": "^0.179.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.179.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}
