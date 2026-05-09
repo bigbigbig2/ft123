@@ -73,8 +73,8 @@ export class ScrollController {
   private snapDuration: number;       // 吸附动画时长
   
   // ── 内部调优常数 (微调物理感) ─────────────────────────────────────
-  private wheelInputScale = 2.35;      // 鼠标滚动输入倍率
-  private velocityDamping = 6.4;       // 速度平滑的阻尼强度
+  private wheelInputScale = 0.5;       // 鼠标滚动输入倍率
+  private velocityDamping = 10;        // 速度平滑的阻尼强度
   private snapVelocityThreshold = 0.012; // 触发吸附的速度上限（速度必须足够低才触发）
   private snapDistanceThreshold = 0.012; // 触发吸附的最小距离（太近则不吸附）
   private overshootScale = 0.22;       // 吸附回弹的比例（产生超过目标再回弹的效果）
@@ -91,8 +91,8 @@ export class ScrollController {
     this.velocityScale = opts.velocityScale ?? 1;
     this.sectionCount = Math.max(2, opts.sectionCount ?? 4);
     this.snapEnabled = opts.snap ?? true;
-    this.snapIdleDelay = opts.snapIdleDelay ?? 260;
-    this.snapDuration = opts.snapDuration ?? 1.05;
+    this.snapIdleDelay = opts.snapIdleDelay ?? 1000;
+    this.snapDuration = opts.snapDuration ?? 1.08;
 
     // 初始化 Lenis 滚动引擎
     this.lenis = new Lenis({

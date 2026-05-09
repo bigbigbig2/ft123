@@ -19,6 +19,8 @@ type EarthDebugControls = {
     cloudHigh: number;
     cloudOpacity: number;
     cloudColor: string;
+    nightIntensity: number;
+    nightBlur: number;
     atmosphereDayColor: string;
     atmosphereTwilightColor: string;
     ringOpacity: number;
@@ -114,6 +116,10 @@ function addEarthFolder(sceneFolder: dat.GUI, debugControls: EarthDebugControls)
   cloudsFolder.add(earthParams, 'cloudHigh', 0, 1, 0.01).name('High Range').onChange(applyEarth);
   cloudsFolder.add(earthParams, 'cloudOpacity', 0, 1, 0.01).name('Opacity').onChange(applyEarth);
   cloudsFolder.addColor(earthParams, 'cloudColor').name('Color').onChange(applyEarth);
+
+  const nightFolder = earthFolder.addFolder('Night Lights');
+  nightFolder.add(earthParams, 'nightIntensity', 0, 5, 0.05).name('Intensity').onChange(applyEarth);
+  nightFolder.add(earthParams, 'nightBlur', 0, 10, 0.1).name('Glow Blur').onChange(applyEarth);
 
   const atmoFolder = earthFolder.addFolder('Atmosphere');
   atmoFolder.addColor(earthParams, 'atmosphereDayColor').name('Day Color').onChange(applyEarth);

@@ -122,16 +122,19 @@ function moveBoxCenterTo(root: THREE.Object3D, target: THREE.Vector3) {
 }
 
 async function createProceduralEarth() {
-  const [dayTexture, bumpRoughnessCloudsTexture] = await Promise.all([
+  const [dayTexture, bumpRoughnessCloudsTexture, nightTexture] = await Promise.all([
     loadTexture(`${EARTH_TEXTURE_ROOT}/earth_day_4096.jpg`, {
       colorSpace: THREE.SRGBColorSpace,
     }),
-
     loadTexture(`${EARTH_TEXTURE_ROOT}/earth_bump_roughness_clouds_4096.jpg`),
+    loadTexture(`${EARTH_TEXTURE_ROOT}/earth_night_4096.jpg`, {
+      colorSpace: THREE.SRGBColorSpace,
+    }),
   ]);
 
   tuneTexture(dayTexture);
   tuneTexture(bumpRoughnessCloudsTexture);
+  tuneTexture(nightTexture);
 
   const sunDirection = new THREE.Vector3(0.25, 0.16, 0.36).normalize();
   const sphereGeometry = new THREE.SphereGeometry(1, 96, 96);
@@ -146,14 +149,17 @@ async function createProceduralEarth() {
 
   const materialUniforms = {
     uAtmosphereDay: { value: new THREE.Color('#4db2ff') },
-    uAtmosphereTwilight: { value: new THREE.Color('#bc490b') },
+    uAtmosphereTwilight: { value: new THREE.Color('#ffffff') },
     uSunDir: { value: sunDirection },
     uRoughnessLow: { value: 0.8 },
     uRoughnessHigh: { value: 1.0 },
     uCloudLow: { value: 0.07 },
     uCloudHigh: { value: 0.92 },
-    uCloudOpacity: { value: 0.9 },
+    uCloudOpacity: { value: 0.7 },
     uCloudColor: { value: new THREE.Color('#ffffff') },
+    tNight: { value: nightTexture },
+    uNightIntensity: { value: 4.0 },
+    uNightBlur: { value: 2.0 },
   };
 
   globeMaterial.onBeforeCompile = (shader) => {
@@ -168,6 +174,9 @@ async function createProceduralEarth() {
     shader.uniforms.uCloudHigh = materialUniforms.uCloudHigh;
     shader.uniforms.uCloudOpacity = materialUniforms.uCloudOpacity;
     shader.uniforms.uCloudColor = materialUniforms.uCloudColor;
+    shader.uniforms.tNight = materialUniforms.tNight;
+    shader.uniforms.uNightIntensity = materialUniforms.uNightIntensity;
+    shader.uniforms.uNightBlur = materialUniforms.uNightBlur;
 
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
@@ -198,6 +207,9 @@ async function createProceduralEarth() {
       uniform float uCloudHigh;
       uniform float uCloudOpacity;
       uniform vec3 uCloudColor;
+      uniform sampler2D tNight;
+      uniform float uNightIntensity;
+      uniform float uNightBlur;
       varying vec3 vWorldNormal;
       varying vec3 vWorldPosition;
       `
@@ -238,6 +250,22 @@ async function createProceduralEarth() {
       float atmosphereDayStrengthDither = smoothstep(-0.5, 1.0, sunOrientationDither);
       float atmosphereMixDither = clamp(atmosphereDayStrengthDither * pow(fresnelDither, 2.0), 0.0, 1.0);
 
+      // Night lights logic (9-Tap Gaussian Blur to eliminate aliasing and simulate true glow)
+      float o = uNightBlur * 0.0003;
+      vec3 nightColorDither = texture2D(tNight, vRoughnessMapUv).rgb * 0.25;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(o, 0.0)).rgb * 0.125;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(-o, 0.0)).rgb * 0.125;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(0.0, o)).rgb * 0.125;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(0.0, -o)).rgb * 0.125;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(o, o)).rgb * 0.0625;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(-o, o)).rgb * 0.0625;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(o, -o)).rgb * 0.0625;
+      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(-o, -o)).rgb * 0.0625;
+      
+      nightColorDither *= uNightIntensity;
+      gl_FragColor.rgb += nightColorDither;
+
+      // Atmosphere logic
       gl_FragColor.rgb = mix(gl_FragColor.rgb, atmosphereColorDither, atmosphereMixDither);
       `
     );
@@ -289,7 +317,13 @@ export async function createEarthScene() {
     loadGLTF(`${EARTH_MODEL_ROOT}/wenzi.gltf`),
   ]);
 
-  const sun = new THREE.DirectionalLight('#ffffff', 3.05);
+  // Remove the default HemisphereLight as it flattens the procedural planet shading
+  const hemiLight = scene.scene.children.find(c => c instanceof THREE.HemisphereLight);
+  if (hemiLight) {
+    scene.scene.remove(hemiLight);
+  }
+
+  const sun = new THREE.DirectionalLight('#ffffff', 1.0);
   sun.position.copy(earth.sunDirection).multiplyScalar(6);
   scene.scene.add(sun);
 
@@ -335,13 +369,15 @@ export async function createEarthScene() {
     roughnessHigh: 1.0,
     cloudLow: 0.07,
     cloudHigh: 0.92,
-    cloudOpacity: 0.9,
+    cloudOpacity: 0.7,
     cloudColor: '#ffffff',
+    nightIntensity: 4.0,
+    nightBlur: 2.0,
     atmosphereDayColor: '#4db2ff',
-    atmosphereTwilightColor: '#bc490b',
+    atmosphereTwilightColor: '#ffffff',
     ringOpacity: 0.14,
     ringEmissiveIntensity: 0.26,
-    sunIntensity: 3.05,
+    sunIntensity: 1.0,
     sunX: 0.25,
     sunY: 0.16,
     sunZ: 0.36,
@@ -365,6 +401,8 @@ export async function createEarthScene() {
         shader.uniforms.uCloudHigh.value = earthDebug.cloudHigh;
         shader.uniforms.uCloudOpacity.value = earthDebug.cloudOpacity;
         shader.uniforms.uCloudColor.value.set(earthDebug.cloudColor);
+        shader.uniforms.uNightIntensity.value = earthDebug.nightIntensity;
+        shader.uniforms.uNightBlur.value = earthDebug.nightBlur;
         shader.uniforms.uAtmosphereDay.value.set(earthDebug.atmosphereDayColor);
         shader.uniforms.uAtmosphereTwilight.value.set(earthDebug.atmosphereTwilightColor);
       }
