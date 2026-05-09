@@ -16,6 +16,7 @@ uniform float uMix;
 uniform float uProgressVel;
 uniform float uHomeChromaticStrength;
 uniform float uHomeEdgeSoftness;
+uniform float uSceneMistStrength;
 
 varying vec2 vUv;
 
@@ -121,11 +122,24 @@ vec3 renderHomeTransition() {
   return clamp(mix(sceneA, sceneB, cut), 0.0, 1.0);
 }
 
+vec3 applySceneMist(vec3 color) {
+  float bottomFog = smoothstep(0.42, 0.02, vUv.y);
+  float leftFog = smoothstep(0.18, 0.0, vUv.x) * 0.36;
+  float rightFog = smoothstep(0.82, 1.0, vUv.x) * 0.28;
+  float centerGlow = 1.0 - smoothstep(0.0, 0.74, length((vUv - vec2(0.54, 0.46)) * vec2(1.0, 1.2)));
+  float upperWash = smoothstep(0.98, 0.24, vUv.y) * 0.12;
+  float mist = clamp(bottomFog * 0.52 + leftFog + rightFog + centerGlow * 0.2 + upperWash, 0.0, 0.82);
+  vec3 mistColor = vec3(0.82, 0.88, 0.94);
+  return mix(color, mistColor, mist * clamp(uSceneMistStrength, 0.0, 1.0));
+}
+
 void main() {
   // uMix ≈ 0 时直接采样 sceneA，避免多余计算。
   vec3 color = uMix > 0.001
     ? renderHomeTransition()
     : texture2D(tSceneA, vUv).rgb;
+
+  color = applySceneMist(color);
 
   gl_FragColor = vec4(color, 1.0);
 }

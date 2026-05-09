@@ -37,6 +37,43 @@ body::-webkit-scrollbar {
   height: 0;
 }
 
+.dg.ac {
+  z-index: 80 !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  pointer-events: none !important;
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+}
+
+.dg.main {
+  float: right !important;
+  max-height: calc(100vh - 30px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  pointer-events: auto !important;
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+}
+
+.dg.ac::-webkit-scrollbar,
+.dg.main::-webkit-scrollbar,
+.dg.ac *::-webkit-scrollbar,
+.dg.main *::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+
+.dg.ac::-webkit-scrollbar-thumb,
+.dg.main::-webkit-scrollbar-thumb,
+.dg.ac *::-webkit-scrollbar-thumb,
+.dg.main *::-webkit-scrollbar-thumb {
+  background: rgba(120, 170, 210, 0.68);
+}
+
 #app {
   position: relative;
   width: 100%;
@@ -55,6 +92,152 @@ body::-webkit-scrollbar {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.earth-overlay {
+  --earth-overlay-opacity: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: var(--earth-overlay-opacity);
+  transition: opacity 320ms ease-out;
+}
+
+.earth-overlay__brand {
+  position: absolute;
+  top: clamp(26px, 4.2vw, 54px);
+  left: clamp(28px, 4.6vw, 72px);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 44px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.52), 0 0 28px rgba(185, 220, 255, 0.36);
+}
+
+.earth-overlay__heading {
+  position: absolute;
+  top: clamp(76px, 8.8vh, 104px);
+  left: 50%;
+  width: min(520px, 70vw);
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.earth-overlay__title {
+  font-weight: 300;
+  letter-spacing: 0.055em;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.44);
+  font-size: 38px;
+}
+
+.earth-overlay__phase {
+  margin-top: 10px;
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+}
+
+.earth-overlay__triangle {
+  position: absolute;
+  top: clamp(34px, 5vh, 54px);
+  left: 50%;
+  width: min(38vw, 430px);
+  aspect-ratio: 1 / 0.86;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  transform: translateX(-50%) rotate(45deg) skew(-6deg, -6deg);
+  transform-origin: center;
+}
+
+.earth-overlay__orbit {
+  position: absolute;
+  left: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  transform: translateX(-50%) perspective(900px) rotateX(72deg);
+  box-shadow: 0 0 18px rgba(218, 238, 255, 0.22);
+}
+
+.earth-overlay__orbit--outer {
+  bottom: clamp(58px, 7vh, 96px);
+  width: min(88vw, 1260px);
+  height: min(29vw, 360px);
+}
+
+.earth-overlay__orbit--inner {
+  bottom: clamp(76px, 9vh, 118px);
+  width: min(58vw, 820px);
+  height: min(19vw, 240px);
+  opacity: 0.45;
+}
+
+.earth-overlay__copy {
+  position: absolute;
+  right: clamp(68px, 8vw, 150px);
+  bottom: clamp(56px, 7.2vh, 90px);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 2.05;
+  letter-spacing: 0.04em;
+  text-align: right;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.48), 0 0 22px rgba(166, 206, 244, 0.42);
+}
+
+.earth-overlay__blur {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.18);
+  filter: blur(10px);
+  opacity: 0.45;
+}
+
+.earth-overlay__blur--right {
+  top: 33%;
+  right: 15%;
+  width: 190px;
+  height: 88px;
+}
+
+.earth-overlay__blur--bottom {
+  right: 14%;
+  bottom: 4%;
+  width: 300px;
+  height: 52px;
+}
+
+@media (max-width: 900px) {
+  .earth-overlay__brand {
+    font-size: 30px;
+  }
+
+  .earth-overlay__title {
+    font-size: 30px;
+  }
+
+  .earth-overlay__phase,
+  .earth-overlay__copy {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 600px) {
+  .earth-overlay__brand {
+    font-size: 24px;
+  }
+
+  .earth-overlay__title {
+    font-size: 26px;
+  }
+
+  .earth-overlay__copy {
+    right: 24px;
+    bottom: 58px;
+    max-width: 78vw;
+  }
 }
 
 .scroll-proxy {

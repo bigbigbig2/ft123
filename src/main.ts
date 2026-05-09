@@ -21,6 +21,7 @@ import { VideoScene } from './scenes/VideoScene';
 import { createEarthScene } from './scenes/EarthScene';
 import { createScene1, createScene2 } from './scenes/placeholders';
 import { loadKTX2Texture } from './utils/loaders';
+import { createDebugGui } from './debug/createDebugGui';
 
 // ── 资源路径常量 ──────────────────────────────────────────────────
 const VIDEO_SRC = '/videos/oceans.mp4';            // 首屏视频
@@ -35,6 +36,25 @@ const BOOT_LOADER_HIDE_DURATION_MS = 750;
 // ── 启动加载界面 DOM 引用 ─────────────────────────────────────────
 const bootLoader = document.querySelector<HTMLElement>('[data-boot]');
 const bootLabel = document.querySelector<HTMLElement>('[data-boot-label]');
+const earthOverlay = document.querySelector<HTMLElement>('[data-earth-overlay]');
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const x = Math.min(1, Math.max(0, (value - edge0) / Math.max(edge1 - edge0, 0.0001)));
+  return x * x * (3 - 2 * x);
+}
+
+function getSectionFocus(globalProgress: number, sectionIndex: number, sectionCount: number) {
+  const segments = Math.max(sectionCount - 1, 1);
+  const scaled = globalProgress * segments;
+  const distance = Math.abs(scaled - sectionIndex);
+  return 1 - smoothstep(0.56, 1.04, distance);
+}
+
+function updateEarthPresentation(focus: number, transition: TransitionRenderer) {
+  const strength = Math.min(1, Math.max(0, focus));
+  transition.setSceneMistStrength(strength * 0.82);
+  earthOverlay?.style.setProperty('--earth-overlay-opacity', strength.toFixed(3));
+}
 
 /**
  * 更新启动加载界面上的提示文本
@@ -166,6 +186,14 @@ async function bootstrap() {
     blueNoiseTexture: blueTex,
     backdrop,
   });
+  const debugGui = createDebugGui({
+    engine,
+    scroll,
+    stack,
+    transition,
+    backdrop,
+    sections,
+  });
 
   // 将转场渲染器设为引擎的主视图
   engine.setView(transition);
@@ -182,6 +210,8 @@ async function bootstrap() {
     // 将场景对和混合参数传递给转场渲染器
     transition.setSceneTargets(current, next);
     transition.setMix(blend, scroll.velocity);
+    updateEarthPresentation(getSectionFocus(scroll.progress, 1, sections.length), transition);
+    debugGui.update();
   });
 
   // ── 7. 启动渲染循环 ────────────────────────────────────────────
@@ -207,6 +237,7 @@ async function bootstrap() {
     stack,
     transition,
     backdrop,
+    debugGui,
     sections,
   };
 }

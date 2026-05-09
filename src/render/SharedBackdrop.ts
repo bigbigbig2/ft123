@@ -32,6 +32,8 @@ const CUBES_BG_FRAGMENT_SHADER = /* glsl */ `
   uniform sampler2D tBlue;      // 蓝噪声纹理
   uniform vec2 uBlueOffset;    // 蓝噪声逐帧偏移
   uniform float uDotStrength;  // 点阵叠加强度
+  uniform float uBlueNoiseStrength;
+  uniform float uCenterGlowStrength;
 
   // 简易二维哈希，为每个点阵格子分配随机 ID
   float hash12(vec2 p) {
@@ -80,7 +82,7 @@ const CUBES_BG_FRAGMENT_SHADER = /* glsl */ `
     vec3 color = mix(uColor1, uColor2, grad * 0.9);
     // 中心辉光（偏右上方的柔和白色光晕）
     float centerGlow = 1.0 - smoothstep(0.0, 0.92, length(vUv - vec2(0.58, 0.46)) * 1.25);
-    color = mix(color, vec3(1.0), centerGlow * 0.42);
+    color = mix(color, vec3(1.0), centerGlow * uCenterGlowStrength);
 
     // 点阵图案叠加，随滚动位移并有闪烁动画
     vec2 dotUv = screenUv * 45.0;
@@ -92,7 +94,7 @@ const CUBES_BG_FRAGMENT_SHADER = /* glsl */ `
 
     // 蓝噪声抖动消除色阶条纹
     vec3 blueNoise = getBlueNoise(gl_FragCoord.xy).rgb;
-    color += blueNoise * 0.018;
+    color += blueNoise * uBlueNoiseStrength;
     gl_FragColor = vec4(color, 1.0);
   }
 `;
@@ -147,13 +149,15 @@ export class SharedBackdrop {
         uProgress: { value: 0 },
         uAspect: { value: 1 },
         uResolution: { value: new THREE.Vector2(1, 1) },
-        uColor1: { value: new THREE.Color('#c6d1df') },
-        uColor2: { value: new THREE.Color('#fbfdff') },
+        uColor1: { value: new THREE.Color('#aebdcd') },
+        uColor2: { value: new THREE.Color('#edf4f8') },
         tPerlin: { value: opts.perlinTexture },
         tDotPattern: { value: opts.dotPatternTexture },
         tBlue: { value: opts.blueNoiseTexture },
         uBlueOffset: { value: this.blueOffset.clone() },
-        uDotStrength: { value: 0.1 },
+        uDotStrength: { value: 1.0 },
+        uBlueNoiseStrength: { value: 0.018 },
+        uCenterGlowStrength: { value: 0.5 },
       },
       vertexShader: CUBES_BG_VERTEX_SHADER,
       fragmentShader: CUBES_BG_FRAGMENT_SHADER,
@@ -171,6 +175,26 @@ export class SharedBackdrop {
   /** 设置全局滚动进度（0→1） */
   setProgress(progress: number) {
     this.progress = progress;
+  }
+
+  setColor1(value: string) {
+    this.material.uniforms.uColor1.value.set(value);
+  }
+
+  setColor2(value: string) {
+    this.material.uniforms.uColor2.value.set(value);
+  }
+
+  setDotStrength(value: number) {
+    this.material.uniforms.uDotStrength.value = value;
+  }
+
+  setBlueNoiseStrength(value: number) {
+    this.material.uniforms.uBlueNoiseStrength.value = value;
+  }
+
+  setCenterGlowStrength(value: number) {
+    this.material.uniforms.uCenterGlowStrength.value = value;
   }
 
   /** 响应画布尺寸变化 */

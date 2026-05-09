@@ -88,6 +88,27 @@ export class ModelScene implements SceneBase {
     this.transitionState = state;
   }
 
+  setAutoRotate(enabled: boolean) {
+    this.autoRotate = enabled;
+  }
+
+  getAutoRotate() {
+    return this.autoRotate;
+  }
+
+  setAutoRotateSpeed(speed: number) {
+    this.autoRotateSpeed = speed;
+  }
+
+  getAutoRotateSpeed() {
+    return this.autoRotateSpeed;
+  }
+
+  setCameraFov(fov: number) {
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+  }
+
   /**
    * 每帧更新
    * 当场景激活时执行自动旋转；

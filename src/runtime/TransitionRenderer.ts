@@ -113,6 +113,7 @@ export class TransitionRenderer implements EngineView {
         uProgressVel: { value: 0 },     // 滚动速度
         uHomeChromaticStrength: { value: opts.chromaticStrength ?? 0.58 },
         uHomeEdgeSoftness: { value: opts.edgeSoftness ?? 1 },
+        uSceneMistStrength: { value: 0 },
       },
     });
 
@@ -159,6 +160,10 @@ export class TransitionRenderer implements EngineView {
   /** 设置切割边缘柔和度 */
   setEdgeSoftness(v: number) {
     this.compositeMaterial.uniforms.uHomeEdgeSoftness.value = v;
+  }
+
+  setSceneMistStrength(v: number) {
+    this.compositeMaterial.uniforms.uSceneMistStrength.value = Math.min(1, Math.max(0, v));
   }
 
   /**
