@@ -5,7 +5,7 @@
  * 用于展示 GLTF 模型（如地球场景）或简单的几何体（如占位场景）。
  */
 import * as THREE from 'three';
-import type { SceneBase, SceneTransitionState } from './SceneBase';
+import type { SceneBase, SceneScrollState, SceneTransitionState } from './SceneBase';
 
 /** ModelScene 构造选项 */
 export interface ModelSceneOptions {
@@ -40,6 +40,7 @@ export class ModelScene implements SceneBase {
   private active = false;
   /** 当前过渡状态 */
   private transitionState: SceneTransitionState | null = null;
+  protected scrollState: SceneScrollState | null = null;
 
   constructor(opts: ModelSceneOptions) {
     this.name = opts.name;
@@ -86,6 +87,10 @@ export class ModelScene implements SceneBase {
   /** 接收过渡状态信息 */
   setTransitionState(state: SceneTransitionState) {
     this.transitionState = state;
+  }
+
+  setScrollState(state: SceneScrollState) {
+    this.scrollState = state;
   }
 
   setAutoRotate(enabled: boolean) {

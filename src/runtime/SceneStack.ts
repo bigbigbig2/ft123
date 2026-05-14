@@ -1,5 +1,6 @@
 import type {
   SceneBase,
+  SceneScrollState,
   SceneTransitionDirection,
   SceneTransitionState,
 } from '../scenes/SceneBase';
@@ -43,7 +44,7 @@ export class SceneStack {
     this.boundaryHysteresis = options.boundaryHysteresis ?? 0.016;
   }
 
-  sync(globalProgress: number): SyncResult {
+  sync(globalProgress: number, velocity = 0): SyncResult {
     const progress = clamp(globalProgress);
     const direction = this.getDirection(progress);
     const segments = this.segmentCount;
@@ -56,8 +57,8 @@ export class SceneStack {
     const current = this.scenes[currentIndex]!;
     const next = this.scenes[currentIndex + 1] ?? current;
 
-    this.syncActiveScenes(current, next, localProgress, blend);
-    this.syncSceneState(current, next, localProgress, blend, direction, currentIndex);
+    this.syncActiveScenes(current, next, localProgress, blend, direction, velocity);
+    this.syncSceneState(current, next, localProgress, blend, direction, currentIndex, velocity);
 
     this.lastProgress = progress;
 
@@ -157,6 +158,8 @@ export class SceneStack {
     next: SceneBase,
     localProgress: number,
     blend: number,
+    direction: SceneTransitionDirection,
+    velocity: number,
   ) {
     const shouldPreloadNext = localProgress >= this.transitionStart - this.preloadMargin;
     const nextActiveSet = new Set<SceneBase>([current]);
@@ -166,7 +169,10 @@ export class SceneStack {
     }
 
     for (const scene of this.lastActiveSet) {
-      if (!nextActiveSet.has(scene)) scene.setActive(false);
+      if (!nextActiveSet.has(scene)) {
+        scene.setActive(false);
+        scene.setScrollState(this.createScrollState('inactive', this.scenes.indexOf(scene), 0, 0, 0, 1, velocity, direction));
+      }
     }
 
     for (const scene of nextActiveSet) {
@@ -183,13 +189,20 @@ export class SceneStack {
     blend: number,
     direction: SceneTransitionDirection,
     currentIndex: number,
+    velocity: number,
   ) {
     current.setProgress(localProgress);
     current.setTransitionState(this.createState('current', localProgress, blend, direction, currentIndex));
+    current.setScrollState(
+      this.createScrollState('current', currentIndex, localProgress, 1 - blend, 1, blend, velocity, direction),
+    );
 
     if (next !== current) {
       next.setProgress(0);
       next.setTransitionState(this.createState('next', 0, blend, direction, currentIndex));
+      next.setScrollState(
+        this.createScrollState('next', currentIndex + 1, 0, blend, blend, 0, velocity, direction),
+      );
     }
   }
 
@@ -206,6 +219,28 @@ export class SceneStack {
       blend,
       direction,
       currentIndex,
+    };
+  }
+
+  private createScrollState(
+    role: SceneScrollState['role'],
+    sceneIndex: number,
+    local: number,
+    focus: number,
+    enter: number,
+    leave: number,
+    velocity: number,
+    direction: SceneTransitionDirection,
+  ): SceneScrollState {
+    return {
+      role,
+      sceneIndex: Math.max(0, sceneIndex),
+      local: clamp(local),
+      focus: clamp(focus),
+      enter: clamp(enter),
+      leave: clamp(leave),
+      velocity: clamp(velocity),
+      direction,
     };
   }
 }

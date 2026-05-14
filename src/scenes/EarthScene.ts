@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ModelScene } from './ModelScene';
+import type { SceneScrollState } from './SceneBase';
 import { loadGLTF, loadTexture } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
@@ -119,6 +120,11 @@ function moveBoxCenterTo(root: THREE.Object3D, target: THREE.Vector3) {
   const center = new THREE.Vector3();
   box.getCenter(center);
   root.position.add(target.sub(center));
+}
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const x = Math.min(1, Math.max(0, (value - edge0) / Math.max(edge1 - edge0, 0.0001)));
+  return x * x * (3 - 2 * x);
 }
 
 async function createProceduralEarth() {
@@ -356,12 +362,28 @@ export async function createEarthScene() {
   root.add(earth.group, ring.scene, text.scene);
 
   scene.attachAndFit(root, 3.0);
-  const baseScalePerUnit = root.scale.x / 3.0;
-  const basePositionPerUnit = root.position.clone().divideScalar(3.0);
 
   scene.modelRoot.position.y = -0.07;
   scene.modelRoot.rotation.x = 0.2;
   scene.modelRoot.rotation.y = 3.0;
+  const baseModelY = scene.modelRoot.position.y;
+  const baseModelScale = scene.modelRoot.scale.x;
+  const setBaseScrollState = scene.setScrollState.bind(scene);
+
+  scene.setScrollState = (state: SceneScrollState) => {
+    setBaseScrollState(state);
+
+    const transitionPreview = state.role === 'next'
+      ? state.enter * 0.35
+      : 0;
+    const sceneRise = state.role === 'current'
+      ? 0.35 + smoothstep(0.02, 0.34, state.local) * 0.65
+      : 0;
+    const rise = Math.max(transitionPreview, sceneRise);
+
+    scene.modelRoot.position.y = baseModelY + THREE.MathUtils.lerp(-1.2, 0, rise);
+    scene.modelRoot.scale.setScalar(baseModelScale * THREE.MathUtils.lerp(0.86, 1, rise));
+  };
 
   const earthDebug = {
     bumpScale: 0.015,

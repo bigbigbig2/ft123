@@ -161,7 +161,7 @@ async function bootstrap() {
     scroll.raf(time);
     backdrop.setProgress(scroll.progress);
 
-    const { current, next, blend } = stack.sync(scroll.progress);
+    const { current, next, blend } = stack.sync(scroll.progress, scroll.velocity);
     transition.setSceneTargets(current, next);
     transition.setMix(blend, scroll.velocity);
     updateEarthPresentation(getSectionFocus(scroll.progress, 1, sections.length), transition);

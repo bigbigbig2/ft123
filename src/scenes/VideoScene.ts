@@ -4,7 +4,7 @@
  * 将 HTML5 video 渲染为全屏 Three.js 场景，支持 cover/contain 填充模式。
  */
 import * as THREE from 'three';
-import type { SceneBase, SceneTransitionState } from './SceneBase';
+import type { SceneBase, SceneScrollState, SceneTransitionState } from './SceneBase';
 
 /** 构造选项 */
 export interface VideoSceneOptions {
@@ -119,6 +119,7 @@ export class VideoScene implements SceneBase {
 
   setProgress(_progress: number) {}
   setTransitionState(_state: SceneTransitionState) {}
+  setScrollState(_state: SceneScrollState) {}
   update(_delta: number, _elapsed: number) {}
 
   /** 画布尺寸变化时重新计算 UV 变换 */
