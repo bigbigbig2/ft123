@@ -174,22 +174,31 @@ export function createDebugGui(opts: DebugGuiOptions): DebugGui {
     currentScene: 0,
   };
   const scrollFolder = gui.addFolder('Scroll');
+  addLive(liveControllers, scrollFolder.add(scrollParams, 'rawProgress', 0, 1, 0.001).name('raw').listen());
   addLive(liveControllers, scrollFolder.add(scrollParams, 'progress', 0, 1, 0.001).name('progress').listen());
   addLive(liveControllers, scrollFolder.add(scrollParams, 'velocity', 0, 1, 0.001).name('velocity').listen());
   addLive(liveControllers, scrollFolder.add(scrollParams, 'currentScene', 0, opts.stack.length - 1, 1).name('scene').listen());
   scrollFolder.add(scrollParams, 'snapEnabled').name('snap').onChange(() => opts.scroll.applyDebugParams(scrollParams));
-  scrollFolder.add(scrollParams, 'wheelInputScale', 0.2, 8, 0.05).name('wheel scale').onChange(() => opts.scroll.applyDebugParams(scrollParams));
+  scrollFolder.add(scrollParams, 'wheelInputScale', 0.2, 2.5, 0.01).name('wheel scale').onChange(() => opts.scroll.applyDebugParams(scrollParams));
+  scrollFolder.add(scrollParams, 'displayDamping', 4, 28, 0.1).name('display damping').onChange(() => opts.scroll.applyDebugParams(scrollParams));
   scrollFolder.add(scrollParams, 'velocityScale', 0.1, 4, 0.05).name('velocity scale').onChange(() => opts.scroll.applyDebugParams(scrollParams));
-  scrollFolder.add(scrollParams, 'velocityDamping', 1, 18, 0.1).name('damping').onChange(() => opts.scroll.applyDebugParams(scrollParams));
+  scrollFolder.add(scrollParams, 'velocityDamping', 1, 24, 0.1).name('velocity damping').onChange(() => opts.scroll.applyDebugParams(scrollParams));
+  scrollFolder.add(scrollParams, 'snapVelocityThreshold', 0, 0.08, 0.001).name('snap velocity').onChange(() => opts.scroll.applyDebugParams(scrollParams));
+  scrollFolder.add(scrollParams, 'snapDistanceThreshold', 0, 0.08, 0.001).name('snap distance').onChange(() => opts.scroll.applyDebugParams(scrollParams));
   scrollFolder.add(scrollParams, 'snapIdleDelay', 0, 1000, 10).name('snap delay').onChange(() => opts.scroll.applyDebugParams(scrollParams));
-  scrollFolder.add(scrollParams, 'snapDuration', 0.1, 3, 0.01).name('snap duration').onChange(() => opts.scroll.applyDebugParams(scrollParams));
-  scrollFolder.add(scrollParams, 'overshootScale', 0, 0.6, 0.01).name('overshoot').onChange(() => opts.scroll.applyDebugParams(scrollParams));
-  scrollFolder.add(scrollParams, 'overshootMaxRatio', 0, 0.2, 0.005).name('max overshoot').onChange(() => opts.scroll.applyDebugParams(scrollParams));
+  scrollFolder.add(scrollParams, 'snapDuration', 0.1, 1.8, 0.01).name('snap duration').onChange(() => opts.scroll.applyDebugParams(scrollParams));
   addAction(scrollFolder, 'go top', () => opts.scroll.scrollToProgress(0, { duration: 0.85 }));
   addAction(scrollFolder, 'go earth', () => {
     opts.scroll.scrollToProgress(1 / Math.max(opts.sections.length - 1, 1), { duration: 0.85 });
   });
   // scrollFolder.open();
+
+  const routeParams = opts.stack.getDebugParams();
+  const routeFolder = gui.addFolder('Scene Route');
+  routeFolder.add(routeParams, 'transitionStart', 0, 0.95, 0.01).name('transition start').onChange(() => opts.stack.applyDebugParams(routeParams));
+  routeFolder.add(routeParams, 'transitionEnd', 0.05, 1, 0.01).name('transition end').onChange(() => opts.stack.applyDebugParams(routeParams));
+  routeFolder.add(routeParams, 'preloadMargin', 0, 0.5, 0.01).name('preload').onChange(() => opts.stack.applyDebugParams(routeParams));
+  routeFolder.add(routeParams, 'boundaryHysteresis', 0, 0.08, 0.001).name('hysteresis').onChange(() => opts.stack.applyDebugParams(routeParams));
 
   const transitionParams = opts.transition.getDebugParams();
   const transitionFolder = gui.addFolder('Transition');
@@ -268,6 +277,7 @@ export function createDebugGui(opts: DebugGuiOptions): DebugGui {
     gui,
     update() {
       const next = opts.scroll.getDebugParams();
+      scrollParams.rawProgress = next.rawProgress;
       scrollParams.progress = next.progress;
       scrollParams.velocity = next.velocity;
       scrollParams.currentScene = Math.min(
