@@ -165,7 +165,7 @@ async function bootstrap() {
   /** 滚动控制器：将原生滚动映射为 0→1 的归一化进度 */
   const scroll = new ScrollController({
     sectionCount: sections.length,
-    snap: true,               // 启用吸附
+    snap: false,               // 启用吸附
     snapIdleDelay: 240,       // 停止滚动后 240ms 开始吸附
     snapDuration: 1.08,       // 吸附动画总时长（秒）
   });

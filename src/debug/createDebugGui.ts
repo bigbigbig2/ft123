@@ -191,16 +191,28 @@ export function createDebugGui(opts: DebugGuiOptions): DebugGui {
   });
   // scrollFolder.open();
 
-  const transitionParams = {
-    chromaticStrength: 0.58,
-    edgeSoftness: 1,
-  };
+  const transitionParams = opts.transition.getDebugParams();
   const transitionFolder = gui.addFolder('Transition');
   transitionFolder.add(transitionParams, 'chromaticStrength', 0, 1.5, 0.01).name('chromatic').onChange((value) => {
     opts.transition.setChromaticStrength(value);
   });
   transitionFolder.add(transitionParams, 'edgeSoftness', 0.05, 3, 0.01).name('edge softness').onChange((value) => {
     opts.transition.setEdgeSoftness(value);
+  });
+  transitionFolder.add(transitionParams, 'smearStrength', 0, 2, 0.01).name('smear power').onChange((value) => {
+    opts.transition.setSmearStrength(value);
+  });
+  transitionFolder.add(transitionParams, 'smearLength', 0, 0.35, 0.001).name('smear length').onChange((value) => {
+    opts.transition.setSmearLength(value);
+  });
+  transitionFolder.add(transitionParams, 'smearAngle', -Math.PI, Math.PI, 0.01).name('smear angle').onChange((value) => {
+    opts.transition.setSmearAngle(value);
+  });
+  transitionFolder.add(transitionParams, 'fogWashStrength', 0, 1.5, 0.01).name('fog wash').onChange((value) => {
+    opts.transition.setFogWashStrength(value);
+  });
+  transitionFolder.add(transitionParams, 'sceneBRevealStart', 0, 0.95, 0.01).name('B reveal').onChange((value) => {
+    opts.transition.setSceneBRevealStart(value);
   });
   // transitionFolder.open();
 
