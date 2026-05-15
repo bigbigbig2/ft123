@@ -5,6 +5,9 @@ import { loadGLTF, loadTexture } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
 const EARTH_TEXTURE_ROOT = '/textures/earth';
+const SCROLL_SPIN_START = 0.18;
+const SCROLL_SPIN_END = 0.52;
+const SCROLL_SPIN_TURNS = Math.PI * 2;
 
 const ATMOSPHERE_VERTEX_SHADER = /* glsl */ `
   varying vec3 vNormal;
@@ -95,18 +98,25 @@ function setMaterial(root: THREE.Object3D, material: THREE.Material) {
 }
 
 function normalizeText(root: THREE.Object3D) {
+  const materials: THREE.MeshBasicMaterial[] = [];
+
   forEachMesh(root, (mesh) => {
     const oldMaterial = mesh.material;
-    mesh.material = new THREE.MeshBasicMaterial({
+    const material = new THREE.MeshBasicMaterial({
       color: '#ffffff',
       transparent: true,
       opacity: 0.92,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
+    mesh.material = material;
+    materials.push(material);
+
     if (Array.isArray(oldMaterial)) oldMaterial.forEach((mat) => mat.dispose());
     else oldMaterial?.dispose?.();
   });
+
+  return materials;
 }
 
 function tuneTexture(texture: THREE.Texture, anisotropy = 8) {
@@ -125,6 +135,10 @@ function moveBoxCenterTo(root: THREE.Object3D, target: THREE.Vector3) {
 function smoothstep(edge0: number, edge1: number, value: number) {
   const x = Math.min(1, Math.max(0, (value - edge0) / Math.max(edge1 - edge0, 0.0001)));
   return x * x * (3 - 2 * x);
+}
+
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
 }
 
 async function createProceduralEarth() {
@@ -348,7 +362,7 @@ export async function createEarthScene() {
   });
 
   setMaterial(ring.scene, ringMaterial);
-  normalizeText(text.scene);
+  const textMaterials = normalizeText(text.scene);
 
   earth.group.scale.setScalar(1.2);
   ring.scene.scale.setScalar(0.92);
@@ -356,6 +370,8 @@ export async function createEarthScene() {
   moveBoxCenterTo(earth.group, new THREE.Vector3(0, 0.2, 0));
   moveBoxCenterTo(ring.scene, new THREE.Vector3(0, -0.1, 0));
   moveBoxCenterTo(text.scene, new THREE.Vector3(0, -0.09, 0));
+  ring.scene.visible = false;
+  text.scene.visible = false;
 
   const root = new THREE.Group();
   root.name = 'earth-model-root';
@@ -368,21 +384,68 @@ export async function createEarthScene() {
   scene.modelRoot.rotation.y = 3.0;
   const baseModelY = scene.modelRoot.position.y;
   const baseModelScale = scene.modelRoot.scale.x;
+  const baseModelRotationX = scene.modelRoot.rotation.x;
+  const baseCameraPosition = scene.camera.position.clone();
+  const baseCameraFov = scene.camera.fov;
+  const baseRingPosition = ring.scene.position.clone();
+  const baseTextPosition = text.scene.position.clone();
+  const baseRingScale = ring.scene.scale.x;
+  const baseTextScale = text.scene.scale.x;
+  const cameraLookAt = new THREE.Vector3();
   const setBaseScrollState = scene.setScrollState.bind(scene);
 
   scene.setScrollState = (state: SceneScrollState) => {
     setBaseScrollState(state);
 
-    const transitionPreview = state.role === 'next'
-      ? state.enter * 0.35
+    const preview = state.role === 'next'
+      ? smoothstep(0, 1, state.enter) * 0.22
       : 0;
-    const sceneRise = state.role === 'current'
-      ? 0.35 + smoothstep(0.02, 0.34, state.local) * 0.65
+    const sceneProgress = state.role === 'current'
+      ? 0.22 + smoothstep(0.02, 0.64, state.local) * 0.78
       : 0;
-    const rise = Math.max(transitionPreview, sceneRise);
+    const reveal = clamp01(Math.max(preview, sceneProgress));
+    const pullBack = smoothstep(0.08, 0.76, reveal);
+    const staging = smoothstep(0.52, 0.68, state.local);
+    const textReveal = smoothstep(0.56, 0.72, state.local);
+    const focus = clamp01(state.focus);
+    const scrollSpin = smoothstep(SCROLL_SPIN_START, SCROLL_SPIN_END, state.local) * SCROLL_SPIN_TURNS;
+    const spinComplete = state.role === 'current' && state.local >= SCROLL_SPIN_END;
 
-    scene.modelRoot.position.y = baseModelY + THREE.MathUtils.lerp(-1.2, 0, rise);
-    scene.modelRoot.scale.setScalar(baseModelScale * THREE.MathUtils.lerp(0.86, 1, rise));
+    scene.camera.position.set(
+      THREE.MathUtils.lerp(0.08, baseCameraPosition.x, pullBack),
+      THREE.MathUtils.lerp(0.12, baseCameraPosition.y, pullBack),
+      THREE.MathUtils.lerp(2.08, baseCameraPosition.z, pullBack),
+    );
+    scene.camera.fov = THREE.MathUtils.lerp(38, baseCameraFov, pullBack);
+    scene.camera.updateProjectionMatrix();
+    cameraLookAt.set(0, THREE.MathUtils.lerp(0.58, 0.02, pullBack), 0);
+    scene.camera.lookAt(cameraLookAt);
+
+    scene.modelRoot.position.y = baseModelY + THREE.MathUtils.lerp(
+      -0.92,
+      0,
+      pullBack,
+    );
+    scene.modelRoot.scale.setScalar(
+      baseModelScale * THREE.MathUtils.lerp(1.62, 1, pullBack),
+    );
+    scene.modelRoot.rotation.x = THREE.MathUtils.lerp(0.32, baseModelRotationX, pullBack);
+    root.rotation.y = THREE.MathUtils.lerp(-0.22, 0.08, pullBack);
+    earth.group.rotation.y = scrollSpin;
+    scene.setAutoRotate(spinComplete);
+
+    ring.scene.visible = staging > 0.001 && focus > 0.001;
+    text.scene.visible = textReveal > 0.001 && focus > 0.001;
+    ring.scene.position.y = baseRingPosition.y + THREE.MathUtils.lerp(-0.16, 0, staging);
+    text.scene.position.y = baseTextPosition.y + THREE.MathUtils.lerp(-0.1, 0, textReveal);
+    ring.scene.scale.setScalar(baseRingScale * THREE.MathUtils.lerp(0.9, 1, staging));
+    text.scene.scale.setScalar(baseTextScale * THREE.MathUtils.lerp(0.96, 1, textReveal));
+
+    ringMaterial.opacity = earthDebug.ringOpacity * staging * focus;
+    ringMaterial.emissiveIntensity = earthDebug.ringEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
+    for (const material of textMaterials) {
+      material.opacity = 0.92 * textReveal * focus;
+    }
   };
 
   const earthDebug = {

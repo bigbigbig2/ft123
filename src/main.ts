@@ -18,7 +18,7 @@ const PERLIN_DATA = '/textures/detail/perlin-datatexture.ktx2';
 const DOT_PATTERN = '/textures/cubes/dot_pattern.ktx2';
 
 const BOOT_LOADER_HIDE_DURATION_MS = 750;
-const SECTION_SCROLL_HEIGHT_VH = 150;
+const SECTION_SCROLL_HEIGHT_VH = 180;
 
 const bootLoader = document.querySelector<HTMLElement>('[data-boot]');
 const bootLabel = document.querySelector<HTMLElement>('[data-boot-label]');
@@ -29,6 +29,10 @@ function smoothstep(edge0: number, edge1: number, value: number) {
   return x * x * (3 - 2 * x);
 }
 
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
 function getSectionFocus(globalProgress: number, sectionIndex: number, sectionCount: number) {
   const segments = Math.max(sectionCount - 1, 1);
   const scaled = globalProgress * segments;
@@ -36,10 +40,24 @@ function getSectionFocus(globalProgress: number, sectionIndex: number, sectionCo
   return 1 - smoothstep(0.56, 1.04, distance);
 }
 
-function updateEarthPresentation(focus: number, transition: TransitionRenderer) {
-  const strength = Math.min(1, Math.max(0, focus));
-  transition.setSceneMistStrength(strength * 0.82);
+function getSectionLocal(globalProgress: number, sectionIndex: number, sectionCount: number) {
+  const segments = Math.max(sectionCount - 1, 1);
+  return clamp01(globalProgress * segments - sectionIndex);
+}
+
+function updateEarthPresentation(focus: number, local: number, transition: TransitionRenderer) {
+  const strength = clamp01(focus);
+  const nearMist = 1 - smoothstep(0.06, 0.58, local);
+  const heading = strength * smoothstep(0.46, 0.7, local);
+  const frame = strength * smoothstep(0.36, 0.66, local);
+  const copy = strength * smoothstep(0.64, 0.88, local);
+
+  transition.setSceneMistStrength(strength * (0.5 + nearMist * 0.34));
   earthOverlay?.style.setProperty('--earth-overlay-opacity', strength.toFixed(3));
+  earthOverlay?.style.setProperty('--earth-brand-opacity', strength.toFixed(3));
+  earthOverlay?.style.setProperty('--earth-heading-opacity', heading.toFixed(3));
+  earthOverlay?.style.setProperty('--earth-frame-opacity', frame.toFixed(3));
+  earthOverlay?.style.setProperty('--earth-copy-opacity', copy.toFixed(3));
 }
 
 function setBootMessage(message: string) {
@@ -82,6 +100,14 @@ function showBootError() {
   bootLoader.innerHTML = '<div class="boot-loader__error">Boot failed. Check the console and asset paths.</div>';
 }
 
+/**
+ * 应用主引导函数
+ *
+ * 整体流程：
+ *   DOM 锚点获取 → 引擎初始化 → 纹理加载 → 场景构建
+ *   → 滚动控制 / 场景栈 / 背景 / 过渡渲染器实例化
+ *   → 渲染循环启动 → 视频自动播放解锁 → 启动界面隐藏
+ */
 async function bootstrap() {
   const container = document.querySelector<HTMLDivElement>('[data-canvas]');
   const scrollProxy = document.querySelector<HTMLDivElement>('.scroll-proxy');
@@ -114,23 +140,33 @@ async function bootstrap() {
   const scene2 = createScene2();
   const sections = [videoScene, earthScene, scene1, scene2];
 
+  // 撑开页面的高度，使原生的滚动条出现
   scrollProxy.style.height = `${100 + (sections.length - 1) * SECTION_SCROLL_HEIGHT_VH}vh`;
 
+  // 实例化场景栈大管家
   const stack = new SceneStack(sections, {
-    transitionStart: 0.52,
-    transitionEnd: 0.84,
-    preloadMargin: 0.16,
-    boundaryHysteresis: 0.016,
+    transitionStart: 0.52,      // 0.0~0.52 为驻留期，0.52 之后开始转场
+    transitionEnd: 0.84,        // 0.84 时转场达到 100% (blend = 1.0)
+    preloadMargin: 0.16,        // 预加载裕量：在转场开始前提前激活下一场景
+    boundaryHysteresis: 0.016,  // 边界迟滞：防止在两个段落交界处反复横跳闪烁
+    segmentTransitions: {
+      1: {
+        transitionStart: 0.82,
+        transitionEnd: 0.96,
+        preloadMargin: 0.08,
+      },
+    },
   });
 
+  // 实例化物理滚动控制器
   const scroll = new ScrollController({
     sectionCount: sections.length,
-    snap: false,
-    snapIdleDelay: 420,
-    snapDuration: 0.86,
-    displayDamping: 14,
-    velocityDamping: 11,
-    wheelMultiplier: 0.82,
+    snap: false,              // 自动吸附（重构时暂时关闭）
+    snapIdleDelay: 420,       // 停止滚动多少毫秒后触发吸附
+    snapDuration: 0.86,       // 吸附动画的时长
+    displayDamping: 14,       // 进度平滑阻尼
+    velocityDamping: 11,      // 速度平滑阻尼 (传给 Shader 的速度)
+    wheelMultiplier: 0.82,    // 鼠标滚轮强度缩放
   });
   scroll.setSnapPoints(stack.getSnapPoints());
 
@@ -164,7 +200,11 @@ async function bootstrap() {
     const { current, next, blend } = stack.sync(scroll.progress, scroll.velocity);
     transition.setSceneTargets(current, next);
     transition.setMix(blend, scroll.velocity);
-    updateEarthPresentation(getSectionFocus(scroll.progress, 1, sections.length), transition);
+    updateEarthPresentation(
+      getSectionFocus(scroll.progress, 1, sections.length),
+      getSectionLocal(scroll.progress, 1, sections.length),
+      transition,
+    );
     debugGui.update();
   });
 

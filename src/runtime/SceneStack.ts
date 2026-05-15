@@ -20,6 +20,13 @@ export interface SceneStackOptions {
   transitionEnd?: number;
   preloadMargin?: number;
   boundaryHysteresis?: number;
+  segmentTransitions?: Record<number, Partial<SceneStackTransition>>;
+}
+
+interface SceneStackTransition {
+  transitionStart: number;
+  transitionEnd: number;
+  preloadMargin: number;
 }
 
 export class SceneStack {
@@ -27,6 +34,7 @@ export class SceneStack {
   private transitionStart: number;
   private transitionEnd: number;
   private preloadMargin: number;
+  private segmentTransitions: Record<number, Partial<SceneStackTransition>>;
   private boundaryHysteresis: number;
   private lastActiveSet = new Set<SceneBase>();
   private lastProgress = 0;
@@ -41,23 +49,40 @@ export class SceneStack {
     this.transitionStart = options.transitionStart ?? 0.52;
     this.transitionEnd = options.transitionEnd ?? 0.84;
     this.preloadMargin = options.preloadMargin ?? 0.14;
+    this.segmentTransitions = options.segmentTransitions ?? {};
     this.boundaryHysteresis = options.boundaryHysteresis ?? 0.016;
   }
 
+  /**
+   * 同步滚动进度，执行切片与场景分发（每帧调用）
+   * @param globalProgress 全局原生进度 (0~1)
+   * @param velocity 物理平滑速度，将一并打包发送给各场景
+   */
   sync(globalProgress: number, velocity = 0): SyncResult {
     const progress = clamp(globalProgress);
     const direction = this.getDirection(progress);
     const segments = this.segmentCount;
 
+    // 1. 判断当前处在哪个段落内 (含抗抖动迟滞判断)
     this.updateActiveSegment(progress, direction);
 
     const currentIndex = Math.min(this.activeSegmentIndex, segments - 1);
+    
+    // 2. 剥离出当前段落内的局部进度 (0~1)
     const localProgress = this.getLocalProgress(progress, currentIndex);
-    const blend = this.getBlend(localProgress);
+    
+    // 3. 计算特效所需的融合系数 (受 transitionStart 和 End 阈值影响)
+    const transition = this.getTransition(currentIndex);
+    const blend = this.getBlend(localProgress, transition);
+    
+    // 4. 定位新旧场景
     const current = this.scenes[currentIndex]!;
     const next = this.scenes[currentIndex + 1] ?? current;
 
-    this.syncActiveScenes(current, next, localProgress, blend, direction, velocity);
+    // 5. 按需激活与剔除 (Culling优化)
+    this.syncActiveScenes(current, next, localProgress, blend, transition, direction, velocity);
+    
+    // 6. 广播计算好的各个维度进度给场景
     this.syncSceneState(current, next, localProgress, blend, direction, currentIndex, velocity);
 
     this.lastProgress = progress;
@@ -143,8 +168,25 @@ export class SceneStack {
     return clamp((progress - segmentStart) / Math.max(segmentEnd - segmentStart, 0.0001));
   }
 
-  private getBlend(localProgress: number) {
-    return smoothstep(this.transitionStart, this.transitionEnd, localProgress);
+  private getTransition(currentIndex: number): SceneStackTransition {
+    const segment = this.segmentTransitions[currentIndex] ?? {};
+    const transitionStart = segment.transitionStart ?? this.transitionStart;
+    let transitionEnd = segment.transitionEnd ?? this.transitionEnd;
+    const preloadMargin = segment.preloadMargin ?? this.preloadMargin;
+
+    if (transitionEnd <= transitionStart + 0.01) {
+      transitionEnd = Math.min(1, transitionStart + 0.01);
+    }
+
+    return {
+      transitionStart: clamp(transitionStart, 0, 0.98),
+      transitionEnd: clamp(transitionEnd, 0.02, 1),
+      preloadMargin: clamp(preloadMargin, 0, 0.5),
+    };
+  }
+
+  private getBlend(localProgress: number, transition: SceneStackTransition) {
+    return smoothstep(transition.transitionStart, transition.transitionEnd, localProgress);
   }
 
   private getDirection(progress: number): SceneTransitionDirection {
@@ -158,10 +200,11 @@ export class SceneStack {
     next: SceneBase,
     localProgress: number,
     blend: number,
+    transition: SceneStackTransition,
     direction: SceneTransitionDirection,
     velocity: number,
   ) {
-    const shouldPreloadNext = localProgress >= this.transitionStart - this.preloadMargin;
+    const shouldPreloadNext = localProgress >= transition.transitionStart - transition.preloadMargin;
     const nextActiveSet = new Set<SceneBase>([current]);
 
     if (next !== current && (blend > 0 || shouldPreloadNext)) {

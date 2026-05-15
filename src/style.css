@@ -96,6 +96,10 @@ body::-webkit-scrollbar {
 
 .earth-overlay {
   --earth-overlay-opacity: 0;
+  --earth-brand-opacity: 0;
+  --earth-heading-opacity: 0;
+  --earth-frame-opacity: 0;
+  --earth-copy-opacity: 0;
   position: fixed;
   inset: 0;
   z-index: 3;
@@ -113,6 +117,7 @@ body::-webkit-scrollbar {
   font-size: 44px;
   font-weight: 400;
   letter-spacing: 0.08em;
+  opacity: var(--earth-brand-opacity);
   text-shadow: 0 0 12px rgba(255, 255, 255, 0.52), 0 0 28px rgba(185, 220, 255, 0.36);
 }
 
@@ -122,6 +127,7 @@ body::-webkit-scrollbar {
   left: 50%;
   width: min(520px, 70vw);
   color: rgba(255, 255, 255, 0.9);
+  opacity: var(--earth-heading-opacity);
   text-align: center;
   transform: translateX(-50%);
 }
@@ -149,6 +155,7 @@ body::-webkit-scrollbar {
   aspect-ratio: 1 / 0.86;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
   border-left: 1px solid rgba(255, 255, 255, 0.16);
+  opacity: var(--earth-frame-opacity);
   transform: translateX(-50%) rotate(45deg) skew(-6deg, -6deg);
   transform-origin: center;
 }
@@ -158,6 +165,7 @@ body::-webkit-scrollbar {
   left: 50%;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 50%;
+  opacity: var(--earth-frame-opacity);
   transform: translateX(-50%) perspective(900px) rotateX(72deg);
   box-shadow: 0 0 18px rgba(218, 238, 255, 0.22);
 }
@@ -172,7 +180,7 @@ body::-webkit-scrollbar {
   bottom: clamp(76px, 9vh, 118px);
   width: min(58vw, 820px);
   height: min(19vw, 240px);
-  opacity: 0.45;
+  opacity: calc(var(--earth-frame-opacity) * 0.45);
 }
 
 .earth-overlay__copy {
@@ -184,6 +192,7 @@ body::-webkit-scrollbar {
   font-weight: 500;
   line-height: 2.05;
   letter-spacing: 0.04em;
+  opacity: var(--earth-copy-opacity);
   text-align: right;
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.48), 0 0 22px rgba(166, 206, 244, 0.42);
 }
@@ -192,7 +201,7 @@ body::-webkit-scrollbar {
   position: absolute;
   background: rgba(255, 255, 255, 0.18);
   filter: blur(10px);
-  opacity: 0.45;
+  opacity: calc(var(--earth-frame-opacity) * 0.45);
 }
 
 .earth-overlay__blur--right {
