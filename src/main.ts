@@ -37,7 +37,7 @@ function getSectionFocus(globalProgress: number, sectionIndex: number, sectionCo
   const segments = Math.max(sectionCount - 1, 1);
   const scaled = globalProgress * segments;
   const distance = Math.abs(scaled - sectionIndex);
-  return 1 - smoothstep(0.56, 1.04, distance);
+  return 1 - smoothstep(0.36, 0.86, distance);
 }
 
 function getSectionLocal(globalProgress: number, sectionIndex: number, sectionCount: number) {
@@ -150,6 +150,11 @@ async function bootstrap() {
     preloadMargin: 0.16,        // 预加载裕量：在转场开始前提前激活下一场景
     boundaryHysteresis: 0.016,  // 边界迟滞：防止在两个段落交界处反复横跳闪烁
     segmentTransitions: {
+      0: {
+        transitionStart: 0.62,
+        transitionEnd: 0.82,
+        preloadMargin: 0.1,
+      },
       1: {
         transitionStart: 0.82,
         transitionEnd: 0.96,

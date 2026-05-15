@@ -5,7 +5,7 @@ import { loadGLTF, loadTexture } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
 const EARTH_TEXTURE_ROOT = '/textures/earth';
-const SCROLL_SPIN_START = 0.18;
+const SCROLL_SPIN_START = 0.15;
 const SCROLL_SPIN_END = 0.52;
 const SCROLL_SPIN_TURNS = Math.PI * 2;
 
@@ -139,6 +139,37 @@ function smoothstep(edge0: number, edge1: number, value: number) {
 
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value));
+}
+
+interface EarthTimeline {
+  liftProgress: number;
+  pullBack: number;
+  staging: number;
+  textReveal: number;
+  focus: number;
+  scrollSpin: number;
+  spinComplete: boolean;
+}
+
+function getEarthTimeline(state: SceneScrollState): EarthTimeline {
+  const isCurrent = state.role === 'current';
+  const nextLift = state.role === 'next'
+    ? smoothstep(0.62, 1, state.enter) * 0.28
+    : 0;
+  const liftProgress = isCurrent
+    ? smoothstep(0, 1, clamp01(state.local / SCROLL_SPIN_START))
+    : nextLift;
+  const pullBack = smoothstep(SCROLL_SPIN_START, SCROLL_SPIN_END, state.local);
+
+  return {
+    liftProgress,
+    pullBack,
+    staging: smoothstep(0.52, 0.68, state.local),
+    textReveal: smoothstep(0.56, 0.72, state.local),
+    focus: clamp01(state.focus),
+    scrollSpin: smoothstep(SCROLL_SPIN_START, SCROLL_SPIN_END, state.local) * SCROLL_SPIN_TURNS,
+    spinComplete: isCurrent && state.local >= SCROLL_SPIN_END,
+  };
 }
 
 async function createProceduralEarth() {
@@ -394,23 +425,7 @@ export async function createEarthScene() {
   const cameraLookAt = new THREE.Vector3();
   const setBaseScrollState = scene.setScrollState.bind(scene);
 
-  scene.setScrollState = (state: SceneScrollState) => {
-    setBaseScrollState(state);
-
-    const preview = state.role === 'next'
-      ? smoothstep(0, 1, state.enter) * 0.22
-      : 0;
-    const sceneProgress = state.role === 'current'
-      ? 0.22 + smoothstep(0.02, 0.64, state.local) * 0.78
-      : 0;
-    const reveal = clamp01(Math.max(preview, sceneProgress));
-    const pullBack = smoothstep(0.08, 0.76, reveal);
-    const staging = smoothstep(0.52, 0.68, state.local);
-    const textReveal = smoothstep(0.56, 0.72, state.local);
-    const focus = clamp01(state.focus);
-    const scrollSpin = smoothstep(SCROLL_SPIN_START, SCROLL_SPIN_END, state.local) * SCROLL_SPIN_TURNS;
-    const spinComplete = state.role === 'current' && state.local >= SCROLL_SPIN_END;
-
+  const applyCameraTimeline = ({ pullBack }: EarthTimeline) => {
     scene.camera.position.set(
       THREE.MathUtils.lerp(0.08, baseCameraPosition.x, pullBack),
       THREE.MathUtils.lerp(0.12, baseCameraPosition.y, pullBack),
@@ -420,11 +435,13 @@ export async function createEarthScene() {
     scene.camera.updateProjectionMatrix();
     cameraLookAt.set(0, THREE.MathUtils.lerp(0.58, 0.02, pullBack), 0);
     scene.camera.lookAt(cameraLookAt);
+  };
 
+  const applyModelTimeline = ({ liftProgress, pullBack, scrollSpin, spinComplete }: EarthTimeline) => {
     scene.modelRoot.position.y = baseModelY + THREE.MathUtils.lerp(
-      -0.92,
+      -1.6,
       0,
-      pullBack,
+      liftProgress,
     );
     scene.modelRoot.scale.setScalar(
       baseModelScale * THREE.MathUtils.lerp(1.62, 1, pullBack),
@@ -433,7 +450,9 @@ export async function createEarthScene() {
     root.rotation.y = THREE.MathUtils.lerp(-0.22, 0.08, pullBack);
     earth.group.rotation.y = scrollSpin;
     scene.setAutoRotate(spinComplete);
+  };
 
+  const applyStageTimeline = ({ staging, textReveal, focus }: EarthTimeline) => {
     ring.scene.visible = staging > 0.001 && focus > 0.001;
     text.scene.visible = textReveal > 0.001 && focus > 0.001;
     ring.scene.position.y = baseRingPosition.y + THREE.MathUtils.lerp(-0.16, 0, staging);
@@ -446,6 +465,15 @@ export async function createEarthScene() {
     for (const material of textMaterials) {
       material.opacity = 0.92 * textReveal * focus;
     }
+  };
+
+  scene.setScrollState = (state: SceneScrollState) => {
+    setBaseScrollState(state);
+
+    const timeline = getEarthTimeline(state);
+    applyCameraTimeline(timeline);
+    applyModelTimeline(timeline);
+    applyStageTimeline(timeline);
   };
 
   const earthDebug = {
