@@ -30,15 +30,40 @@ export interface DebugPanel {
 function createContainer() {
   const container = document.createElement('div');
   container.className = 'ft-debug-panel';
+  
+  // 注入局部样式，用于定制细滚动条。
+  // 注意：全局样式中禁用了滚动条，所以这里需要通过 ::-webkit-scrollbar 强制恢复。
+  const style = document.createElement('style');
+  style.textContent = `
+    .ft-debug-panel::-webkit-scrollbar {
+      width: 4px;
+      display: block !important;
+    }
+    .ft-debug-panel::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .ft-debug-panel::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.22);
+      border-radius: 2px;
+    }
+    .ft-debug-panel::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.35);
+    }
+  `;
+  document.head.appendChild(style);
+
   // 调试面板独立挂在 body 上，避免被业务 DOM 的布局和层级影响。
   Object.assign(container.style, {
     position: 'fixed',
     top: '12px',
     right: '12px',
     width: '360px',
-    maxHeight: 'calc(100vh - 24px)',
-    overflow: 'auto',
-    zIndex: '90',
+    maxHeight: 'calc(100vh - 24px)', // 确保面板高度不超过视口，超出部分自动滚动
+    overflowX: 'hidden',
+    overflowY: 'auto',
+    zIndex: '999', // 确保在最上层
+    scrollbarWidth: 'thin', // 适配 Firefox
+    scrollbarColor: 'rgba(255, 255, 255, 0.22) transparent',
   });
   document.body.appendChild(container);
   return container;

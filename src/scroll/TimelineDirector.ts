@@ -190,7 +190,7 @@ export class TimelineDirector {
       };
     }
 
-    const mix = smoothstep(0, 1, segmentProgress);
+    const mix = segmentProgress; // 移除 smoothstep，依赖全局进度的阻尼来保证平滑，避免段与段之间的“停顿感”
     return {
       currentSceneName: segment.from,
       nextSceneName: segment.to,

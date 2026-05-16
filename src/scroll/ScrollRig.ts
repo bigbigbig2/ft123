@@ -91,15 +91,12 @@ export class ScrollRig {
       },
     });
 
-    // 每当 Lenis 更新滚动位置，都要同步通知 ScrollTrigger 更新其内部计算值
+    // 监听 Lenis 更新并同步给 ScrollTrigger
     this.lenis.on('scroll', () => ScrollTrigger.update());
 
-    // 使用 GSAP 的统一帧调度器驱动 Lenis，这样可以保证滚动和 GSAP 动画在同一个 tick 中执行，避免画面抖动
     this.ticker = (time) => {
-      this.lenis.raf(time * 1000);
+      this.lenis.raf(time);
     };
-    gsap.ticker.add(this.ticker);
-    gsap.ticker.lagSmoothing(0); // 关闭平滑，防止在掉帧时导致滚动位置跳变
 
     // 创建一个覆盖整个页面的 ScrollTrigger 实例，作为全局进度条
     this.trigger = ScrollTrigger.create({
@@ -119,7 +116,7 @@ export class ScrollRig {
       onUpdate: (self) => {
         // 当滚动发生时，计算并广播新的状态
         const rawVelocity = Math.abs(self.getVelocity());
-        
+
         this.state = {
           progress: clamp(self.progress),
           rawVelocity,
@@ -134,6 +131,14 @@ export class ScrollRig {
 
     // 初始化时手动刷新一次，确保位置正确
     ScrollTrigger.refresh();
+  }
+
+  /**
+   * 手动更新驱动：由渲染引擎 (Engine) 的 loop 调用。
+   * 确保滚动计算与渲染帧完全同步。
+   */
+  update(time: number) {
+    this.ticker(time);
   }
 
   /**

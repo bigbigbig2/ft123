@@ -12,6 +12,7 @@ import { VideoScene } from './scenes/VideoScene';
 import { createEarthScene } from './scenes/EarthScene';
 import { createScene1, createScene2 } from './scenes/placeholders';
 import { loadKTX2Texture } from './utils/loaders';
+import { damp } from './scroll/math';
 
 // ── 资源路径配置 ────────────────────────────────────────────────
 const VIDEO_SRC = '/videos/oceans.mp4';
@@ -133,7 +134,7 @@ async function bootstrap() {
     snap: false, // 关闭场景段自动吸附，避免用户轻滚时被强行拉到段起点
     snapPoints: director.getSnapPoints(),// 从导演类获取场景段吸附点，后续需要恢复吸附时可直接复用
     lenisDuration: 0.72, // 调整 Lenis 的默认动画时长，使得自动滚动更平滑自然
-    wheelMultiplier: 0.12,// 微调滚轮输入的缩放倍率，数值越小滚轮推进越慢
+    wheelMultiplier: 0.30,// 微调滚轮输入的缩放倍率，数值越小滚轮推进越慢
     wheelDeltaClamp: 120, // 限制单次滚轮事件的最大位移，防止某些鼠标一次滚动跳太远
   });
 
@@ -175,14 +176,25 @@ async function bootstrap() {
   engine.setView(transition);
 
   // 7. 绑定核心循环钩子
-  engine.onTick(() => {
-    // a. 获取滚动系统的最新状态
+  let smoothedProgress = 0;
+
+  engine.onTick((delta, elapsed, time) => {
+    // a. 手动驱动滚动系统更新，确保滚动计算与 WebGL 渲染在同个 RAF 周期内，彻底消除抖动。
+    scroll.update(time);
+
+    // b. 获取滚动系统的最新状态
     const scrollState = scroll.getState();
 
-    // b. 导演类根据当前进度，计算出这一帧哪些场景该显示，混合系数是多少
-    const frame = director.update(scrollState.progress, scrollState.velocity);
+    // c. 对全局进度进行“二次阻尼”处理。
+    // 虽然 Lenis 已经有惯性，但通过对最终推给“导演”的进度再加一层 damp，
+    // 可以产生更厚重的“阻尼感”，尤其是在地球出现这种大场景切换时。
+    // 提高到 12，增加响应速度，使其更接近 OrbitControls 那种灵动但丝滑的追赶感。
+    smoothedProgress = damp(smoothedProgress, scrollState.progress, 12, delta);
 
-    // c. 将计算出的状态同步给渲染系统和 UI 系统
+    // d. 导演类根据阻尼后的进度，计算出这一帧的“剧本”
+    const frame = director.update(smoothedProgress, scrollState.velocity);
+
+    // e. 将计算出的状态同步给渲染系统和 UI 系统
     const earthState = frame.sceneStates.get('earth');
 
     backdrop.setProgress(frame.globalProgress);
