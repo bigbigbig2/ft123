@@ -1,15 +1,17 @@
 import './style.css';
 import * as THREE from 'three';
 import { Engine } from './core/Engine';
-import { ScrollController } from './runtime/ScrollController';
-import { SceneStack } from './runtime/SceneStack';
-import { TransitionRenderer } from './runtime/TransitionRenderer';
+import { createDebugPanel } from './debug/createDebugPanel';
 import { SharedBackdrop } from './render/SharedBackdrop';
+import { TransitionRenderer } from './runtime/TransitionRenderer';
+import { ScrollRig } from './scroll/ScrollRig';
+import { CHAPTERS, SCROLL_STAGE_HEIGHT_VH, createChapterLayout } from './scroll/chapterConfig';
+import { TimelineDirector } from './scroll/TimelineDirector';
+import { EarthOverlay, getEarthMistStrength } from './ui/EarthOverlay';
 import { VideoScene } from './scenes/VideoScene';
 import { createEarthScene } from './scenes/EarthScene';
 import { createScene1, createScene2 } from './scenes/placeholders';
 import { loadKTX2Texture } from './utils/loaders';
-import { createDebugGui } from './debug/createDebugGui';
 
 const VIDEO_SRC = '/videos/oceans.mp4';
 const SCROLL_NOISE = '/textures/runtime/scroll-datatexture.ktx2';
@@ -18,47 +20,10 @@ const PERLIN_DATA = '/textures/detail/perlin-datatexture.ktx2';
 const DOT_PATTERN = '/textures/cubes/dot_pattern.ktx2';
 
 const BOOT_LOADER_HIDE_DURATION_MS = 750;
-const SECTION_SCROLL_HEIGHT_VH = 180;
 
 const bootLoader = document.querySelector<HTMLElement>('[data-boot]');
 const bootLabel = document.querySelector<HTMLElement>('[data-boot-label]');
-const earthOverlay = document.querySelector<HTMLElement>('[data-earth-overlay]');
-
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const x = Math.min(1, Math.max(0, (value - edge0) / Math.max(edge1 - edge0, 0.0001)));
-  return x * x * (3 - 2 * x);
-}
-
-function clamp01(value: number) {
-  return Math.min(1, Math.max(0, value));
-}
-
-function getSectionFocus(globalProgress: number, sectionIndex: number, sectionCount: number) {
-  const segments = Math.max(sectionCount - 1, 1);
-  const scaled = globalProgress * segments;
-  const distance = Math.abs(scaled - sectionIndex);
-  return 1 - smoothstep(0.36, 0.86, distance);
-}
-
-function getSectionLocal(globalProgress: number, sectionIndex: number, sectionCount: number) {
-  const segments = Math.max(sectionCount - 1, 1);
-  return clamp01(globalProgress * segments - sectionIndex);
-}
-
-function updateEarthPresentation(focus: number, local: number, transition: TransitionRenderer) {
-  const strength = clamp01(focus);
-  const nearMist = 1 - smoothstep(0.06, 0.58, local);
-  const heading = strength * smoothstep(0.46, 0.7, local);
-  const frame = strength * smoothstep(0.36, 0.66, local);
-  const copy = strength * smoothstep(0.64, 0.88, local);
-
-  transition.setSceneMistStrength(strength * (0.5 + nearMist * 0.34));
-  earthOverlay?.style.setProperty('--earth-overlay-opacity', strength.toFixed(3));
-  earthOverlay?.style.setProperty('--earth-brand-opacity', strength.toFixed(3));
-  earthOverlay?.style.setProperty('--earth-heading-opacity', heading.toFixed(3));
-  earthOverlay?.style.setProperty('--earth-frame-opacity', frame.toFixed(3));
-  earthOverlay?.style.setProperty('--earth-copy-opacity', copy.toFixed(3));
-}
+const earthOverlayElement = document.querySelector<HTMLElement>('[data-earth-overlay]');
 
 function setBootMessage(message: string) {
   if (!bootLoader) return;
@@ -100,15 +65,8 @@ function showBootError() {
   bootLoader.innerHTML = '<div class="boot-loader__error">Boot failed. Check the console and asset paths.</div>';
 }
 
-/**
- * 应用主引导函数
- *
- * 整体流程：
- *   DOM 锚点获取 → 引擎初始化 → 纹理加载 → 场景构建
- *   → 滚动控制 / 场景栈 / 背景 / 过渡渲染器实例化
- *   → 渲染循环启动 → 视频自动播放解锁 → 启动界面隐藏
- */
 async function bootstrap() {
+  // 主入口只负责装配：资源加载、场景创建、滚动导演、渲染合成和调试面板。
   const container = document.querySelector<HTMLDivElement>('[data-canvas]');
   const scrollProxy = document.querySelector<HTMLDivElement>('.scroll-proxy');
   if (!container || !scrollProxy) throw new Error('Missing DOM anchors.');
@@ -116,7 +74,7 @@ async function bootstrap() {
   setBootMessage('Preparing renderer...');
   const engine = new Engine(container);
 
-  setBootMessage('Loading original transition textures...');
+  setBootMessage('Loading transition textures...');
   const [scrollTex, blueTex, perlinTex, dotTex] = await Promise.all([
     loadKTX2Texture(SCROLL_NOISE, engine.renderer, { repeat: [2, 2] }),
     loadKTX2Texture(BLUE_NOISE, engine.renderer, {
@@ -140,40 +98,18 @@ async function bootstrap() {
   const scene2 = createScene2();
   const sections = [videoScene, earthScene, scene1, scene2];
 
-  // 撑开页面的高度，使原生的滚动条出现
-  scrollProxy.style.height = `${100 + (sections.length - 1) * SECTION_SCROLL_HEIGHT_VH}vh`;
+  const chapters = createChapterLayout(CHAPTERS);
+  const director = new TimelineDirector(sections, chapters);
+  // 真实页面高度只承担滚动输入，不直接承载内容布局。
+  scrollProxy.style.height = `${SCROLL_STAGE_HEIGHT_VH}vh`;
 
-  // 实例化场景栈大管家
-  const stack = new SceneStack(sections, {
-    transitionStart: 0.52,      // 0.0~0.52 为驻留期，0.52 之后开始转场
-    transitionEnd: 0.84,        // 0.84 时转场达到 100% (blend = 1.0)
-    preloadMargin: 0.16,        // 预加载裕量：在转场开始前提前激活下一场景
-    boundaryHysteresis: 0.016,  // 边界迟滞：防止在两个段落交界处反复横跳闪烁
-    segmentTransitions: {
-      0: {
-        transitionStart: 0.62,
-        transitionEnd: 0.82,
-        preloadMargin: 0.1,
-      },
-      1: {
-        transitionStart: 0.82,
-        transitionEnd: 0.96,
-        preloadMargin: 0.08,
-      },
-    },
+  const scroll = new ScrollRig({
+    snap: true,
+    snapPoints: director.getSnapPoints(),
+    lenisDuration: 0.72,
+    wheelMultiplier: 0.95,
+    wheelDeltaClamp: 180,
   });
-
-  // 实例化物理滚动控制器
-  const scroll = new ScrollController({
-    sectionCount: sections.length,
-    snap: false,              // 自动吸附（重构时暂时关闭）
-    snapIdleDelay: 420,       // 停止滚动多少毫秒后触发吸附
-    snapDuration: 0.86,       // 吸附动画的时长
-    displayDamping: 14,       // 进度平滑阻尼
-    velocityDamping: 11,      // 速度平滑阻尼 (传给 Shader 的速度)
-    wheelMultiplier: 0.82,    // 鼠标滚轮强度缩放
-  });
-  scroll.setSnapPoints(stack.getSnapPoints());
 
   const backdrop = new SharedBackdrop({
     perlinTexture: perlinTex,
@@ -185,32 +121,40 @@ async function bootstrap() {
     scrollTexture: scrollTex,
     blueNoiseTexture: blueTex,
     backdrop,
+    chromaticStrength: 0.36,
+    edgeSoftness: 1.15,
   });
 
-  const debugGui = createDebugGui({
+  transition.setSmearStrength(0.42);
+  transition.setSmearLength(0.1);
+  transition.setFogWashStrength(0.52);
+  transition.setSceneBRevealStart(0.44);
+
+  const earthOverlay = new EarthOverlay(earthOverlayElement);
+  const debugPanel = createDebugPanel({
     engine,
     scroll,
-    stack,
+    director,
     transition,
     backdrop,
     sections,
+    chapters,
   });
 
   engine.setView(transition);
 
-  engine.onTick((_delta, _elapsed, time) => {
-    scroll.raf(time);
-    backdrop.setProgress(scroll.progress);
+  engine.onTick(() => {
+    // 每帧只有 ScrollRig -> TimelineDirector 这一条状态流，避免多个模块重复推导滚动进度。
+    const scrollState = scroll.getState();
+    const frame = director.update(scrollState.progress, scrollState.velocity);
+    const earthState = frame.sceneStates.get('earth');
 
-    const { current, next, blend } = stack.sync(scroll.progress, scroll.velocity);
-    transition.setSceneTargets(current, next);
-    transition.setMix(blend, scroll.velocity);
-    updateEarthPresentation(
-      getSectionFocus(scroll.progress, 1, sections.length),
-      getSectionLocal(scroll.progress, 1, sections.length),
-      transition,
-    );
-    debugGui.update();
+    backdrop.setProgress(frame.globalProgress);
+    transition.setSceneTargets(frame.current, frame.next);
+    transition.setMix(frame.mix, frame.velocity);
+    transition.setSceneMistStrength(getEarthMistStrength(earthState));
+    earthOverlay.update(earthState);
+    debugPanel.update(frame, scrollState);
   });
 
   engine.start();
@@ -228,11 +172,13 @@ async function bootstrap() {
   (window as unknown as { __ft: unknown }).__ft = {
     engine,
     scroll,
-    stack,
+    director,
     transition,
     backdrop,
-    debugGui,
+    earthOverlay,
+    debugPanel,
     sections,
+    chapters,
   };
 }
 

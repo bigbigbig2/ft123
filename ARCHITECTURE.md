@@ -1,137 +1,83 @@
-# FT 3D WebGL 引擎架构与过渡系统深度解析 (Ultra-Detailed)
+# FT 运行时架构说明
 
-本文档旨在**深度剖析**项目中 3D 场景滚动过渡（Scene Transition）的底层架构与工作原理。这是一套为高端企业级 3D 官方网站打造的渲染架构，核心目标是在保证 60FPS 性能的前提下，实现影视级的复杂流体色散转场。
+当前项目已经从旧的自研滚动状态机，重构为一条统一的滚动管线：
 
-整个大满贯系统按数据流转顺序分为四个核心模块：**物理输入层**、**逻辑状态层**、**管线渲染层**以及**着色器视觉层**。
-
----
-
-## 1. 核心架构与数据流图 (Data Flow)
-
-整个应用的更新循环（Game Loop）遵循单向数据流。通过下面的流程图可以清晰看到一帧画面是如何从鼠标滚轮变为屏幕特效的：
-
-```mermaid
-sequenceDiagram
-    participant User as 用户交互 (Wheel/Touch)
-    participant SC as ScrollController (物理层)
-    participant SS as SceneStack (逻辑层)
-    participant Scene as ModelScene (场景层)
-    participant TR as TransitionRenderer (管线层)
-    participant Shader as Fragment Shader (视觉层)
-
-    User->>SC: 滚动事件
-    SC->>SC: 物理阻尼与平滑插值 (velocity, progress)
-    SC->>SS: sync(globalProgress)
-    SS->>SS: 计算当前段落、localProgress、blend
-    SS->>Scene: setTransitionState()
-    Scene->>Scene: 计算模型Y轴视差位移
-    SS-->>TR: 返回当前激活的 sceneA 与 sceneB
-    TR->>TR: 绘制 sceneA 到 renderTargetA
-    TR->>TR: 绘制 sceneB 到 renderTargetB
-    TR->>Shader: 注入 tSceneA, tSceneB, uMix, uProgressVel
-    Shader->>Shader: 并行像素处理：30次循环抽丝采样、消除黑边、云雾遮挡
-    Shader-->>User: 呈现影视级转场画面
+```txt
+浏览器滚轮 / 触摸
+  -> Lenis
+  -> GSAP ScrollTrigger
+  -> ScrollRig
+  -> TimelineDirector
+  -> SceneBase 场景实现
+  -> TransitionRenderer
 ```
 
----
+这条链路里，**全局滚动进度只有一个来源**：`ScrollRig` 输出的 `progress / velocity / direction`。场景切换、shader 混合、DOM overlay、背景动画都从这份状态继续派生，避免多个模块各自计算滚动进度。
 
-## 2. 模块解析一：物理控制层 (`ScrollController.ts`)
+## 核心职责
 
-负责将生硬的系统原生滚动，转化为带有物理惯性的丝滑数据。
-*   **Target Progress vs Actual Progress**：用户滚动时修改的是 `targetProgress`。实际的 `progress` 会在每一帧利用弹簧阻尼算法（Damping）平滑地向目标值逼近。
-*   **计算速度 (`velocity`)**：通过两帧之间 `progress` 的差值推导出滚动速度。这个速度极度重要，它将被直接传递给 Shader（作为 `uProgressVel`），实现**“滚得越快，画面拖影拉丝越长”**的沉浸式力学反馈。
+- `src/scroll/ScrollRig.ts`  
+  封装 Lenis 和 GSAP ScrollTrigger，负责把浏览器滚动转换成统一的 `progress`、`velocity`、`direction`。
 
----
+- `src/scroll/chapterConfig.ts`  
+  章节配置入口。章节权重、转场窗口、预加载距离、滚动高度都在这里调。
 
-## 3. 模块解析二：状态机与进度切片 (`SceneStack.ts`)
+- `src/scroll/TimelineDirector.ts`  
+  把全局滚动进度映射成当前章节、下个章节、当前场景、下个场景、转场混合值 `mix`，并把标准化的场景状态分发给各个 `SceneBase`。
 
-如果一共有 N 个场景，传统的做法是一次性把 N 个场景都扔进引擎，这会导致 Draw Call 爆炸。`SceneStack` 是这套架构的性能保护伞。
+- `src/runtime/TransitionRenderer.ts`  
+  负责 WebGL 合成。它只接受导演层给出的 `current / next / mix / velocity`，不再自己判断场景路由。
 
-### 3.1 进度切片算法
-全局 `progress` 是 `0.0 ~ 1.0`。如果 N=4，则有 3 个“段（Segment）”。
-```typescript
-const scaled = clamped * segments;           // 比如进度 0.4 * 3 = 1.2
-const currentIndex = Math.floor(scaled);     // 1，当前在 Scene 1
-const localProgress = scaled - currentIndex; // 0.2，Scene 1 内的局部进度
-```
+- `src/scenes/SceneBase.ts`  
+  定义所有场景必须实现的公共接口。
 
-### 3.2 延迟触发机制（Thresholding）
-在段内的前 70% 滚动，不会发生转场（`blend = 0`）。这留给了用户纯净的浏览时间。
-当 `localProgress > 0.7`（`transitionStart`）时，`blend` 值才开始从 0 迅速飙升到 1。
-```typescript
-// 混合系数计算公式
-blend = (localProgress - 0.7) / (1.0 - 0.7); 
-```
+- `src/scenes/earth/createEarthModel.ts`  
+  创建程序化地球：纹理加载、球体、大气层、地球材质 shader 注入。
 
-### 3.3 按需激活 (Culling)
-严格执行“非相关即销毁”的原则。除了 `sceneA` 和 `sceneB` 处于活跃状态，其余所有场景的遍历和渲染完全停止。内存驻留但 GPU 不运算。
+- `src/scenes/earth/earthTimeline.ts`  
+  负责地球章节内部的动画进度映射，例如抬升、拉远、自转、环和文字出现。
 
----
+- `src/ui/EarthOverlay.ts`  
+  负责地球章节的 DOM overlay 透明度和雾化强度映射。
 
-## 4. 模块解析三：场景内视差引擎 (`ModelScene.ts`)
+- `src/debug/createDebugPanel.ts`  
+  基于 Tweakpane 的调试面板，用来观察滚动状态并调节章节、转场、背景和引擎参数。
 
-2D 网页经典的视差（Parallax）被升维到了 3D 空间。
-引擎每一帧都会向场景广播当前的 `blend` 状态。为了让转场有强烈的空间纵深感：
-*   **Current 场景（正在退出）**：随着 `blend` 增加，模型 Y 坐标被强制往上推 `y = blend * distance`。
-*   **Next 场景（正在进入）**：随着 `blend` 增加，模型 Y 坐标从下方往中心复位 `y = (1.0 - blend) * -distance`。
+## 新增场景流程
 
-由于模型本身在滑动，背景也在着色器里拉丝，这种**逻辑层位移 + 视觉层拖尾**的复合效果，远超单纯的 Shader 动画。
+新增一个场景时，不要再写新的滚动状态机。推荐流程是：
 
----
+1. 实现一个 `SceneBase` 场景。
+2. 在 `src/main.ts` 里实例化并加入 `sections`。
+3. 在 `src/scroll/chapterConfig.ts` 里添加章节配置。
+4. 如果场景有复杂的内部滚动动画，单独建立类似 `earthTimeline.ts` 的场景本地 timeline 文件。
 
-## 5. 模块解析四：双离屏渲染管线 (`TransitionRenderer.ts`)
+跨场景路由只放在 `TimelineDirector`。场景内部只消费 `SceneScrollState`，不要反向控制滚动系统。
 
-这里是“黑魔法”的集散地。为了让 A 场景和 B 场景能产生像素级的化学反应，我们必须使用 Render Targets (FBO)。
+## 调试面板
 
-1.  引擎将 `sceneA` 和 `sceneB` 分别渲染到内存中的两块显存贴图 `renderTargetA` 和 `renderTargetB` 上。
-2.  创建一个完全贴合屏幕的正交相机平面 (`PlaneGeometry(2, 2)`)。
-3.  将刚刚拍下来的两张照片，作为材质变量（`uniform sampler2D tSceneA`, `tSceneB`）传给终极合成器 `compositeMaterial`。
+调试面板由 `src/debug/createDebugPanel.ts` 创建，使用 Tweakpane。
 
----
+- 页面右上角默认显示。
+- 按 `D` 键可以隐藏或显示。
+- Runtime 监控做了节流刷新，避免调试 UI 每帧抢占过多时间。
 
-## 6. 模块解析五：视觉合成着色器 (`composite.frag.glsl`)
+当前面板支持：
 
-这是全站最具技术含量的几百行代码。普通页面的淡入淡出是 CSS 的 `opacity` 动画，而我们是基于微积分和物理光学的像素重组。
+- 查看全局滚动进度、速度、当前场景、下个场景、`mix`。
+- 跳转到任意章节。
+- 调整滚轮强度和滚轮 delta 裁剪。
+- 调整章节转场窗口。
+- 调整转场 shader 参数。
+- 调整背景颜色、点阵、噪声、中心光。
+- 暂停或恢复渲染循环。
 
-### 6.1 时间轴非线性化 (`peak`)
-```glsl
-float progress = smoothstep(0.0, 1.0, uMix); // 消除硬拐点
-float peak = sin(progress * PI);             // 提取抛物线高潮
-```
-所有最夸张的破坏性特效（亮度泛白、形变），均与 `peak` 挂钩。保证了不管怎么滚，首尾永远是原图，只有中间才狂暴。
+## 当前渲染模型
 
-### 6.2 积分采样消除重影 (Continuous Sampling)
-老版本采用离散的 6 点采样，会导致“重影 (Ghosting)”。我们改为了影视级 30 次循环积分：
-```glsl
-for (int i = 0; i < SAMPLES; i++) {
-    // 引入伪随机白噪声进行空间抖动 (Dithering)
-    float t = (float(i) + dither) / float(SAMPLES);
-    // ... 
-}
-```
-通过随机数打散固定的采样间隔，视觉系统会把带有噪点的图像脑补成完美的连续流体。
+`TransitionRenderer` 使用三张离屏渲染目标：
 
-### 6.3 色差分离 (Chromatic Aberration)
-在拖尾的轨迹上，人为制造 RGB 三原色折射率的差异：
-*   `t=0` (头部)：原色。
-*   `t=0.5` (中部)：剥离出高饱和度的绿色。
-*   `t=1.0` (尾部)：剥离出冰蓝色。
-营造出模型以极高速度撕裂时产生的光谱发散。
+- 共享动态背景。
+- 当前场景。
+- 下一个场景。
 
-### 6.4 预乘 Alpha (Pre-multiplied Alpha) 解决黑边
-由于地球背景是透明的，在积分累加颜色时，透明像素默认 RGB 为 `(0,0,0)`。如果直接相加，会导致边缘积累出一圈极其难看的黑晕。
-**核心解法：**
-```glsl
-// 累加时将颜色与该点自身的透明度相乘
-accumRGB += samp.rgb * samp.a * tint; 
-```
-只有确切包含实体颜色的像素才参与发光运算，彻底杜绝黑边穿帮。
-
----
-
-## 7. 架构优势总结
-
-这种重型架构带来的收益是巨大的：
-1.  **极高的扩展性**：未来只需写一个新的 `Scene` 类，只要实现 `SceneBase` 接口，就可以无缝插入全站滚动流，无需修改任何转场逻辑。
-2.  **电影级质感**：双路离屏带来的像素掌控权，让前端工程师具备了媲美 After Effects 的合成能力。
-3.  **精确的力学反馈**：用户的“手感”通过速度变量直接驱动了 GPU 的模糊半径，达到了所见即所得的人机合一体验。
+最后通过 `src/shaders/composite.frag.glsl` 做全屏合成。需要注意：场景选择由 `TimelineDirector` 在渲染前完成，`TransitionRenderer` 只负责把给定的场景画出来。

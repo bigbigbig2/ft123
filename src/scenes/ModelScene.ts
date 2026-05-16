@@ -21,7 +21,7 @@ export interface ModelSceneOptions {
 /**
  * ModelScene — 3D 模型展示场景
  *
- * 实现 SceneBase 接口，可被 SceneStack 管理。
+ * 实现 SceneBase 接口，可被 TimelineDirector 管理。
  * 内置环境光、半球光、主光源和补光灯，
  * 提供 attachAndFit() 方法自动缩放和居中模型。
  */
