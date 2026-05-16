@@ -4,7 +4,7 @@ import { clamp, smoothstep } from '../../scroll/math';
 const SCROLL_SPIN_START = 0.15;
 const SCROLL_SPIN_END = 0.52;
 const SCROLL_SPIN_TURNS = Math.PI * 2;
-const NEXT_LIFT_AMOUNT = 0.28;
+const NEXT_LIFT_AMOUNT = 0.62;
 
 /** 地球章节内部动画轨道。所有值都已经归一化，EarthScene 只负责应用。 */
 export interface EarthTimeline {
@@ -19,7 +19,7 @@ export interface EarthTimeline {
 
 export function getEarthTimeline(state: SceneScrollState): EarthTimeline {
   const isCurrent = state.role === 'current';
-  // 作为 next 预加载时，地球先轻微抬升，避免正式接管时从完全静止开始。
+  // 作为 next 进入显式转场段时，地球先完成较明显的预入场，避免 A -> B 转场中只剩背景。
   const nextLift = state.role === 'next'
     ? smoothstep(0.06, 1, state.enter) * NEXT_LIFT_AMOUNT
     : 0;

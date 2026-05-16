@@ -2,9 +2,14 @@ import { Pane } from 'tweakpane';
 import type { Engine } from '../core/Engine';
 import type { SharedBackdrop } from '../render/SharedBackdrop';
 import type { TransitionRenderer } from '../runtime/TransitionRenderer';
-import type { ChapterLayout } from '../scroll/chapterConfig';
 import type { ScrollRig, ScrollRigState } from '../scroll/ScrollRig';
 import type { TimelineDirector, TimelineFrame } from '../scroll/TimelineDirector';
+import {
+  getSceneLabelMap,
+  isSceneSegment,
+  isTransitionSegment,
+  type TimelineSegmentLayout,
+} from '../scroll/timelineConfig';
 import type { SceneBase } from '../scenes/SceneBase';
 
 export interface DebugPanelOptions {
@@ -14,7 +19,7 @@ export interface DebugPanelOptions {
   transition: TransitionRenderer;
   backdrop: SharedBackdrop;
   sections: SceneBase[];
-  chapters: ChapterLayout[];
+  segments: TimelineSegmentLayout[];
 }
 
 export interface DebugPanel {
@@ -39,6 +44,7 @@ function createContainer() {
   return container;
 }
 
+// 当用户在输入框内时，按 D 键不应该切换面板的显示状态。
 function shouldIgnoreToggle(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
   if (!target) return false;
@@ -46,13 +52,14 @@ function shouldIgnoreToggle(event: KeyboardEvent) {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
 }
 
-function getSceneDisplayName(sceneName: string, chapters: ChapterLayout[]) {
-  return chapters.find((chapter) => chapter.sceneName === sceneName)?.label ?? sceneName;
+// 根据场景标识找到对应的中文标签，用于调试面板显示。正常运行时用户是看不到这些内部标识的。
+function getSceneDisplayName(sceneName: string, sceneLabels: Map<string, string>) {
+  return sceneLabels.get(sceneName) ?? sceneName;
 }
 
 export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   const container = createContainer();
-  const sceneLabels = new Map(opts.chapters.map((chapter) => [chapter.sceneName, chapter.label]));
+  const sceneLabels = getSceneLabelMap(opts.segments);
   // Tweakpane 只负责调试 UI，实际状态仍然来自 ScrollRig / TimelineDirector。
   const pane = new Pane({
     title: 'FT 调试面板',
@@ -66,10 +73,13 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     velocity: 0,
     rawVelocity: 0,
     direction: 0,
-    activeChapter: '',
+    segmentType: '',
+    activeSegment: '',
     currentScene: '',
     nextScene: '',
-    localProgress: 0,
+    segmentProgress: 0,
+    sceneProgress: 0,
+    transitionProgress: 0,
     mix: 0,
   };
 
@@ -78,18 +88,21 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   runtimeFolder.addBinding(runtime, 'velocity', { readonly: true, label: '归一化速度', format: (value) => value.toFixed(3) });
   runtimeFolder.addBinding(runtime, 'rawVelocity', { readonly: true, label: '原始速度', format: (value) => value.toFixed(0) });
   runtimeFolder.addBinding(runtime, 'direction', { readonly: true, label: '方向' });
-  runtimeFolder.addBinding(runtime, 'activeChapter', { readonly: true, label: '当前章节' });
+  runtimeFolder.addBinding(runtime, 'segmentType', { readonly: true, label: '段类型' });
+  runtimeFolder.addBinding(runtime, 'activeSegment', { readonly: true, label: '当前段' });
   runtimeFolder.addBinding(runtime, 'currentScene', { readonly: true, label: '当前场景' });
   runtimeFolder.addBinding(runtime, 'nextScene', { readonly: true, label: '下一场景' });
-  runtimeFolder.addBinding(runtime, 'localProgress', { readonly: true, label: '章节进度', format: (value) => value.toFixed(3) });
+  runtimeFolder.addBinding(runtime, 'segmentProgress', { readonly: true, label: '段进度', format: (value) => value.toFixed(3) });
+  runtimeFolder.addBinding(runtime, 'sceneProgress', { readonly: true, label: '场景进度', format: (value) => value.toFixed(3) });
+  runtimeFolder.addBinding(runtime, 'transitionProgress', { readonly: true, label: '转场进度', format: (value) => value.toFixed(3) });
   runtimeFolder.addBinding(runtime, 'mix', { readonly: true, label: '转场混合', format: (value) => value.toFixed(3) });
 
-  const actionsFolder = pane.addFolder({ title: '章节跳转', expanded: true });
-  for (const chapter of opts.chapters) {
+  const actionsFolder = pane.addFolder({ title: '场景跳转', expanded: true });
+  for (const segment of opts.director.getSceneSegments()) {
     actionsFolder
-      .addButton({ title: `跳转到${chapter.label}` })
+      .addButton({ title: `跳转到${segment.label}` })
       // 跳转仍然走 ScrollRig 的统一入口，不直接操作 window.scrollTo。
-      .on('click', () => opts.scroll.scrollToProgress(chapter.start, { duration: 0.55 }));
+      .on('click', () => opts.scroll.scrollToProgress(segment.start, { duration: 0.55 }));
   }
   actionsFolder
     .addButton({ title: '跳转到结尾' })
@@ -99,21 +112,30 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   const scrollParams = opts.scroll.getDebugParams();
   const scrollFolder = pane.addFolder({ title: '滚动输入', expanded: false });
   scrollFolder
-    .addBinding(scrollParams, 'wheelInputScale', { min: 0.2, max: 2.5, step: 0.01, label: '滚轮倍率' })
+    .addBinding(scrollParams, 'wheelInputScale', { min: 0.02, max: 1.2, step: 0.01, label: '滚轮倍率' })
     .on('change', () => opts.scroll.applyDebugParams(scrollParams));
   scrollFolder
-    .addBinding(scrollParams, 'wheelDeltaClamp', { min: 24, max: 420, step: 1, label: '滚轮裁剪' })
+    .addBinding(scrollParams, 'wheelDeltaClamp', { min: 12, max: 240, step: 1, label: '单次滚轮上限' })
     .on('change', () => opts.scroll.applyDebugParams(scrollParams));
 
-  const chapterFolder = pane.addFolder({ title: '章节配置', expanded: false });
-  for (const chapter of opts.director.getChapters()) {
-    const folder = chapterFolder.addFolder({ title: `${chapter.index}. ${chapter.label}`, expanded: false });
-    // 起止点由章节权重计算出来，只读；转场窗口可以现场调参验证节奏。
-    folder.addBinding(chapter, 'start', { readonly: true, label: '起点', format: (value) => value.toFixed(3) });
-    folder.addBinding(chapter, 'end', { readonly: true, label: '终点', format: (value) => value.toFixed(3) });
-    folder.addBinding(chapter, 'transitionStart', { min: 0, max: 0.98, step: 0.01, label: '转场开始' });
-    folder.addBinding(chapter, 'transitionEnd', { min: 0.02, max: 1, step: 0.01, label: '转场结束' });
-    folder.addBinding(chapter, 'preloadMargin', { min: 0, max: 0.5, step: 0.01, label: '预加载距离' });
+  const timelineFolder = pane.addFolder({ title: '时间轴结构', expanded: false });
+  for (const segment of opts.director.getSegments()) {
+    const info = {
+      type: segment.type === 'scene' ? '场景段' : '转场段',
+      start: segment.start,
+      end: segment.end,
+      duration: segment.duration,
+      route: isSceneSegment(segment)
+        ? getSceneDisplayName(segment.sceneName, sceneLabels)
+        : `${getSceneDisplayName(segment.from, sceneLabels)} -> ${getSceneDisplayName(segment.to, sceneLabels)}`,
+    };
+    const folder = timelineFolder.addFolder({ title: `${segment.index}. ${segment.label}`, expanded: false });
+    // 起止点由 duration 统一计算，运行中只读；需要改结构时直接改 timelineConfig.ts。
+    folder.addBinding(info, 'type', { readonly: true, label: '类型' });
+    folder.addBinding(info, 'route', { readonly: true, label: '路由' });
+    folder.addBinding(info, 'duration', { readonly: true, label: '相对长度', format: (value) => value.toFixed(2) });
+    folder.addBinding(info, 'start', { readonly: true, label: '起点', format: (value) => value.toFixed(3) });
+    folder.addBinding(info, 'end', { readonly: true, label: '终点', format: (value) => value.toFixed(3) });
   }
 
   // 合成 shader 参数集中放在 Transition 分组，避免散落在场景代码里。
@@ -206,10 +228,13 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
       runtime.velocity = scrollState.velocity;
       runtime.rawVelocity = scrollState.rawVelocity;
       runtime.direction = scrollState.direction;
-      runtime.activeChapter = frame.activeChapter.label;
-      runtime.currentScene = getSceneDisplayName(frame.current.name, opts.chapters);
-      runtime.nextScene = getSceneDisplayName(frame.next.name, opts.chapters);
-      runtime.localProgress = frame.localProgress;
+      runtime.segmentType = isTransitionSegment(frame.activeSegment) ? '转场段' : '场景段';
+      runtime.activeSegment = frame.activeSegment.label;
+      runtime.currentScene = getSceneDisplayName(frame.current.name, sceneLabels);
+      runtime.nextScene = getSceneDisplayName(frame.next.name, sceneLabels);
+      runtime.segmentProgress = frame.segmentProgress;
+      runtime.sceneProgress = frame.sceneProgress;
+      runtime.transitionProgress = frame.transitionProgress;
       runtime.mix = frame.mix;
 
       const now = performance.now();
