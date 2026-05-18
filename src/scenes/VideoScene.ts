@@ -5,6 +5,12 @@
  */
 import * as THREE from 'three';
 import type { SceneBase, SceneScrollState, SceneTransitionState } from './SceneBase';
+import {
+  CloudSpriteTransitionLayer,
+  getDefaultCloudSpriteDebugParams,
+  type CloudSpriteDebugParams,
+  type CloudSpriteTransitionAssets,
+} from '../runtime/CloudSpriteTransitionLayer';
 
 /** 构造选项 */
 export interface VideoSceneOptions {
@@ -13,6 +19,7 @@ export interface VideoSceneOptions {
   fit?: 'contain' | 'cover';  // 填充模式（默认 cover）
   muted?: boolean;            // 静音（默认 true）
   loop?: boolean;             // 循环（默认 true）
+  cloudAssets?: CloudSpriteTransitionAssets;
 }
 
 /**
@@ -21,21 +28,27 @@ export interface VideoSceneOptions {
  */
 export class VideoScene implements SceneBase {
   readonly name: string;
-  readonly scene = new THREE.Scene();
-  readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  readonly scene: THREE.Scene;
+  readonly camera: THREE.PerspectiveCamera;
   /** video 元素，暴露以便外部解锁自动播放 */
   readonly video: HTMLVideoElement;
 
   private videoTexture: THREE.VideoTexture;
   private material: THREE.ShaderMaterial;
   private mesh: THREE.Mesh;
+  private cloudLayer: CloudSpriteTransitionLayer | null;
   private fit: 'contain' | 'cover';
   private videoAspect = 16 / 9;     // 视频原始宽高比
   private viewportAspect = 16 / 9;  // 画布宽高比
+  private cloudProgress = 0;
+  private backgroundDistance = 1450;
 
   constructor(opts: VideoSceneOptions) {
     this.name = opts.name ?? 'video';
     this.fit = opts.fit ?? 'cover';
+    this.cloudLayer = opts.cloudAssets ? new CloudSpriteTransitionLayer(opts.cloudAssets) : null;
+    this.scene = this.cloudLayer?.scene ?? new THREE.Scene();
+    this.camera = this.cloudLayer?.camera ?? new THREE.PerspectiveCamera(42, 1, 0.1, 2200);
 
     // 创建隐藏的 video 元素
     const video = document.createElement('video');
@@ -74,7 +87,7 @@ export class VideoScene implements SceneBase {
         varying vec2 vUv;
         void main() {
           vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: /* glsl */ `
@@ -95,6 +108,7 @@ export class VideoScene implements SceneBase {
       transparent: true,
       depthWrite: false,
       depthTest: false,
+      side: THREE.DoubleSide,
     });
 
     // 视频就绪/失败回调
@@ -107,8 +121,12 @@ export class VideoScene implements SceneBase {
     video.addEventListener('canplay', markReady);
     video.addEventListener('error', markUnavailable);
 
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.material);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = -100;
     this.scene.add(this.mesh);
+    this.cloudLayer?.setProgress(0);
+    this.updateVideoPlaneTransform();
   }
 
   /** 激活时播放视频，停用时暂停 */
@@ -119,13 +137,25 @@ export class VideoScene implements SceneBase {
 
   setProgress(_progress: number) {}
   setTransitionState(_state: SceneTransitionState) {}
-  setScrollState(_state: SceneScrollState) {}
-  update(_delta: number, _elapsed: number) {}
+  setScrollState(state: SceneScrollState) {
+    this.cloudProgress = state.transitionProgress;
+    this.cloudLayer?.setProgress(this.cloudProgress);
+    this.updateVideoPlaneTransform();
+  }
+
+  update(delta: number, elapsed: number) {
+    this.cloudLayer?.update(delta, elapsed);
+    this.updateVideoPlaneTransform();
+  }
 
   /** 画布尺寸变化时重新计算 UV 变换 */
   setSize(width: number, height: number) {
     this.viewportAspect = width / Math.max(height, 1);
+    this.camera.aspect = this.viewportAspect;
+    this.camera.updateProjectionMatrix();
+    this.cloudLayer?.setSize(width, height);
     this.updateUvTransform();
+    this.updateVideoPlaneTransform();
   }
 
   /** 根据 cover/contain 模式计算 UV 缩放 */
@@ -144,6 +174,25 @@ export class VideoScene implements SceneBase {
     }
   }
 
+  private updateVideoPlaneTransform() {
+    const direction = new THREE.Vector3();
+    this.camera.getWorldDirection(direction);
+    this.mesh.position.copy(this.camera.position).addScaledVector(direction, this.backgroundDistance);
+    this.mesh.quaternion.copy(this.camera.quaternion);
+
+    const height = 2 * this.backgroundDistance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5));
+    const width = height * this.camera.aspect;
+    this.mesh.scale.set(width, height, 1);
+  }
+
+  getCloudDebugParams(): CloudSpriteDebugParams {
+    return this.cloudLayer?.getDebugParams() ?? getDefaultCloudSpriteDebugParams();
+  }
+
+  applyCloudDebugParams(params: CloudSpriteDebugParams) {
+    this.cloudLayer?.applyDebugParams(params);
+  }
+
   /** 释放视频和 GPU 资源 */
   dispose() {
     this.video.pause();
@@ -152,5 +201,6 @@ export class VideoScene implements SceneBase {
     this.videoTexture.dispose();
     this.material.dispose();
     this.mesh.geometry.dispose();
+    this.cloudLayer?.dispose();
   }
 }

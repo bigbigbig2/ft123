@@ -2,6 +2,7 @@ import { Pane } from 'tweakpane';
 import type { Engine } from '../core/Engine';
 import type { SharedBackdrop } from '../render/SharedBackdrop';
 import type { TransitionRenderer } from '../runtime/TransitionRenderer';
+import type { CloudSpriteDebugParams } from '../runtime/CloudSpriteTransitionLayer';
 import type { ScrollRig, ScrollRigState } from '../scroll/ScrollRig';
 import type { TimelineDirector, TimelineFrame } from '../scroll/TimelineDirector';
 import {
@@ -77,6 +78,17 @@ function shouldIgnoreToggle(event: KeyboardEvent) {
 
 function getSceneDisplayName(sceneName: string, sceneLabels: Map<string, string>) {
   return sceneLabels.get(sceneName) ?? sceneName;
+}
+
+function isCloudDebugTarget(scene: SceneBase): scene is SceneBase & {
+  getCloudDebugParams(): CloudSpriteDebugParams;
+  applyCloudDebugParams(params: CloudSpriteDebugParams): void;
+} {
+  const target = scene as SceneBase & {
+    getCloudDebugParams?: unknown;
+    applyCloudDebugParams?: unknown;
+  };
+  return typeof target.getCloudDebugParams === 'function' && typeof target.applyCloudDebugParams === 'function';
 }
 
 function addLightFolder(
@@ -241,6 +253,45 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   transitionFolder
     .addBinding(transitionParams, 'sceneBRevealStart', { min: 0, max: 0.95, step: 0.01, label: 'B 场景显现' })
     .on('change', (event) => opts.transition.setSceneBRevealStart(event.value));
+
+  const cloudDebugTarget = opts.sections.find(isCloudDebugTarget);
+  if (cloudDebugTarget) {
+    const cloudParams = cloudDebugTarget.getCloudDebugParams();
+    const cloudFolder = pane.addFolder({ title: '视频场景云海', expanded: false });
+    const applyCloudDebug = () => cloudDebugTarget.applyCloudDebugParams(cloudParams);
+    cloudFolder.addBinding(cloudParams, 'enabled', { label: '启用' }).on('change', applyCloudDebug);
+    cloudFolder.addBinding(cloudParams, 'opacity', { min: 0, max: 1.5, step: 0.01, label: '总透明度' }).on('change', applyCloudDebug);
+    cloudFolder.addBinding(cloudParams, 'fillOpacity', { min: 0, max: 1.5, step: 0.01, label: '主云透明度' }).on('change', applyCloudDebug);
+    cloudFolder.addBinding(cloudParams, 'layerOpacity', { min: 0, max: 1.5, step: 0.01, label: '层云透明度' }).on('change', applyCloudDebug);
+    cloudFolder.addBinding(cloudParams, 'foregroundOpacity', { min: 0, max: 1.5, step: 0.01, label: '前景透明度' }).on('change', applyCloudDebug);
+
+    const cloudSpaceFolder = cloudFolder.addFolder({ title: '空间', expanded: false });
+    cloudSpaceFolder.addBinding(cloudParams, 'fillCount', { min: 20, max: 260, step: 1, label: '主云数量' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'width', { min: 200, max: 2200, step: 10, label: '横向铺开' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'depth', { min: 120, max: 2200, step: 10, label: '纵深' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'baseY', { min: -180, max: 80, step: 1, label: '基础高度' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'fillScale', { min: 10, max: 180, step: 1, label: '云片尺寸' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'randomScale', { min: 0, max: 100, step: 1, label: '随机尺寸' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'cameraDrift', { min: -120, max: 120, step: 1, label: '相机拉动' }).on('change', applyCloudDebug);
+    cloudSpaceFolder.addBinding(cloudParams, 'zDrift', { min: -300, max: 300, step: 1, label: '纵向漂移' }).on('change', applyCloudDebug);
+
+    const cloudNoiseFolder = cloudFolder.addFolder({ title: '扰动', expanded: false });
+    cloudNoiseFolder.addBinding(cloudParams, 'noiseStrength', { min: 0, max: 4, step: 0.01, label: '噪声强度' }).on('change', applyCloudDebug);
+    cloudNoiseFolder.addBinding(cloudParams, 'noiseSpeed', { min: 0, max: 3, step: 0.01, label: '噪声速度' }).on('change', applyCloudDebug);
+    cloudNoiseFolder.addBinding(cloudParams, 'alphaNoise', { min: 0, max: 2, step: 0.01, label: '透明扰动' }).on('change', applyCloudDebug);
+    cloudNoiseFolder.addBinding(cloudParams, 'edgeSoftness', { min: 0.001, max: 0.5, step: 0.001, label: '边缘柔化' }).on('change', applyCloudDebug);
+
+    const cloudColorFolder = cloudFolder.addFolder({ title: '颜色', expanded: false });
+    cloudColorFolder.addBinding(cloudParams, 'brightness', { min: 0.2, max: 2.5, step: 0.01, label: '亮度' }).on('change', applyCloudDebug);
+    cloudColorFolder.addBinding(cloudParams, 'tint', { label: '色调' }).on('change', applyCloudDebug);
+    cloudColorFolder.addBinding(cloudParams, 'tintStrength', { min: 0, max: 1, step: 0.01, label: '色调强度' }).on('change', applyCloudDebug);
+
+    const cloudTimingFolder = cloudFolder.addFolder({ title: '显隐', expanded: false });
+    cloudTimingFolder.addBinding(cloudParams, 'enterStart', { min: 0, max: 1, step: 0.01, label: '进入开始' }).on('change', applyCloudDebug);
+    cloudTimingFolder.addBinding(cloudParams, 'enterEnd', { min: 0, max: 1, step: 0.01, label: '进入结束' }).on('change', applyCloudDebug);
+    cloudTimingFolder.addBinding(cloudParams, 'exitStart', { min: 0, max: 1, step: 0.01, label: '离开开始' }).on('change', applyCloudDebug);
+    cloudTimingFolder.addBinding(cloudParams, 'exitEnd', { min: 0, max: 1, step: 0.01, label: '离开结束' }).on('change', applyCloudDebug);
+  }
 
   const backdropParams = {
     color1: '#aebdcd',

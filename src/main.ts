@@ -11,7 +11,7 @@ import { EarthOverlay, getEarthMistStrength } from './ui/EarthOverlay';
 import { VideoScene } from './scenes/VideoScene';
 import { createEarthScene } from './scenes/EarthScene';
 import { createScene1, createScene2 } from './scenes/placeholders';
-import { loadKTX2Texture } from './utils/loaders';
+import { loadKTX2Texture, loadTexture } from './utils/loaders';
 import { damp } from './scroll/math';
 
 // ── 资源路径配置 ────────────────────────────────────────────────
@@ -20,6 +20,17 @@ const SCROLL_NOISE = '/textures/runtime/scroll-datatexture.ktx2';
 const BLUE_NOISE = '/textures/runtime/blue-8-128-rgb.ktx2';
 const PERLIN_DATA = '/textures/detail/perlin-datatexture.ktx2';
 const DOT_PATTERN = '/textures/cubes/dot_pattern.ktx2';
+const CLOUD_TEXTURE_ROOT = '/textures/cloud';
+const CLOUD_FILL = `${CLOUD_TEXTURE_ROOT}/cloud10.png`;
+const CLOUD_NOISE = `${CLOUD_TEXTURE_ROOT}/cnoise.png`;
+const CLOUD_FOREGROUND = `${CLOUD_TEXTURE_ROOT}/intro-cloud.png`;
+const CLOUD_LAYERS = [
+  `${CLOUD_TEXTURE_ROOT}/layer0.png`,
+  `${CLOUD_TEXTURE_ROOT}/layer1.png`,
+  `${CLOUD_TEXTURE_ROOT}/layer2.png`,
+  `${CLOUD_TEXTURE_ROOT}/layer3.png`,
+  `${CLOUD_TEXTURE_ROOT}/layer4.png`,
+];
 
 const BOOT_LOADER_HIDE_DURATION_MS = 750;
 
@@ -95,7 +106,7 @@ async function bootstrap() {
 
   // 2. 加载转场和后处理所需的纹理
   setBootMessage('Loading transition textures...');
-  const [scrollTex, blueTex, perlinTex, dotTex] = await Promise.all([
+  const [scrollTex, blueTex, perlinTex, dotTex, cloudFillTex, cloudNoiseTex, cloudForegroundTex, ...cloudLayerTexs] = await Promise.all([
     loadKTX2Texture(SCROLL_NOISE, engine.renderer, { repeat: [2, 2] }),
     loadKTX2Texture(BLUE_NOISE, engine.renderer, {
       minFilter: THREE.NearestFilter, // 蓝噪纹理必须使用邻近采样，保持像素独立性
@@ -109,11 +120,38 @@ async function bootstrap() {
       colorSpace: THREE.SRGBColorSpace,
       repeat: [2, 2],
     }),
+    loadTexture(CLOUD_FILL, {
+      colorSpace: THREE.SRGBColorSpace,
+      wrap: THREE.ClampToEdgeWrapping,
+    }),
+    loadTexture(CLOUD_NOISE, {
+      wrap: THREE.RepeatWrapping,
+      repeat: [1, 1],
+    }),
+    loadTexture(CLOUD_FOREGROUND, {
+      colorSpace: THREE.SRGBColorSpace,
+      wrap: THREE.ClampToEdgeWrapping,
+    }),
+    ...CLOUD_LAYERS.map((url) => loadTexture(url, {
+      colorSpace: THREE.SRGBColorSpace,
+      wrap: THREE.ClampToEdgeWrapping,
+    })),
   ]);
 
   // 3. 加载场景
   setBootMessage('Loading scenes...');
-  const videoScene = new VideoScene({ src: VIDEO_SRC, name: 'intro-video', fit: 'cover', muted: true });
+  const videoScene = new VideoScene({
+    src: VIDEO_SRC,
+    name: 'intro-video',
+    fit: 'cover',
+    muted: true,
+    cloudAssets: {
+      fillTexture: cloudFillTex,
+      noiseTexture: cloudNoiseTex,
+      foregroundTexture: cloudForegroundTex,
+      layerTextures: cloudLayerTexs,
+    },
+  });
   const earthScene = await createEarthScene();
   const scene1 = createScene1();
   const scene2 = createScene2();
