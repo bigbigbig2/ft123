@@ -46,6 +46,19 @@ export interface ProceduralEarthModel {
   sunDirection: THREE.Vector3;
   globeMaterial: THREE.MeshStandardMaterial;
   atmosphereMaterial: THREE.ShaderMaterial;
+  materialUniforms: {
+    uAtmosphereDay: { value: THREE.Color };
+    uAtmosphereTwilight: { value: THREE.Color };
+    uSunDir: { value: THREE.Vector3 };
+    uRoughnessLow: { value: number };
+    uRoughnessHigh: { value: number };
+    uCloudLow: { value: number };
+    uCloudHigh: { value: number };
+    uCloudOpacity: { value: number };
+    uCloudColor: { value: THREE.Color };
+    tNight: { value: THREE.Texture };
+    uNightIntensity: { value: number };
+  };
 }
 
 /** 统一设置地球纹理采样质量。 */
@@ -82,7 +95,6 @@ function createGlobeMaterial(
     uCloudColor: { value: new THREE.Color('#ffffff') },
     tNight: { value: nightTexture },
     uNightIntensity: { value: 4.0 },
-    uNightBlur: { value: 2.0 },
   };
 
   globeMaterial.onBeforeCompile = (shader) => {
@@ -122,7 +134,6 @@ function createGlobeMaterial(
       uniform vec3 uCloudColor;
       uniform sampler2D tNight;
       uniform float uNightIntensity;
-      uniform float uNightBlur;
       varying vec3 vWorldNormal;
       varying vec3 vWorldPosition;
       `,
@@ -162,18 +173,7 @@ function createGlobeMaterial(
       float atmosphereDayStrengthDither = smoothstep(-0.5, 1.0, sunOrientationDither);
       float atmosphereMixDither = clamp(atmosphereDayStrengthDither * pow(fresnelDither, 2.0), 0.0, 1.0);
 
-      float o = uNightBlur * 0.0003;
-      vec3 nightColorDither = texture2D(tNight, vRoughnessMapUv).rgb * 0.25;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(o, 0.0)).rgb * 0.125;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(-o, 0.0)).rgb * 0.125;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(0.0, o)).rgb * 0.125;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(0.0, -o)).rgb * 0.125;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(o, o)).rgb * 0.0625;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(-o, o)).rgb * 0.0625;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(o, -o)).rgb * 0.0625;
-      nightColorDither += texture2D(tNight, vRoughnessMapUv + vec2(-o, -o)).rgb * 0.0625;
-
-      nightColorDither *= uNightIntensity;
+      vec3 nightColorDither = texture2D(tNight, vRoughnessMapUv).rgb * uNightIntensity;
       gl_FragColor.rgb += nightColorDither;
       gl_FragColor.rgb = mix(gl_FragColor.rgb, atmosphereColorDither, atmosphereMixDither);
       `,
@@ -220,6 +220,7 @@ export async function createProceduralEarth(): Promise<ProceduralEarthModel> {
     vertexShader: ATMOSPHERE_VERTEX_SHADER,
     fragmentShader: ATMOSPHERE_FRAGMENT_SHADER,
     transparent: true,
+    depthWrite: false,
     side: THREE.BackSide,
   });
 
@@ -236,5 +237,6 @@ export async function createProceduralEarth(): Promise<ProceduralEarthModel> {
     sunDirection,
     globeMaterial,
     atmosphereMaterial,
+    materialUniforms,
   };
 }

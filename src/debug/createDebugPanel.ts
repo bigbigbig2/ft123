@@ -11,6 +11,8 @@ import {
   type TimelineSegmentLayout,
 } from '../scroll/timelineConfig';
 import type { SceneBase } from '../scenes/SceneBase';
+import { isEarthDebugScene } from '../scenes/EarthScene';
+import type { EarthDebugSingleLightState } from '../scenes/EarthScene';
 
 export interface DebugPanelOptions {
   engine: Engine;
@@ -30,9 +32,7 @@ export interface DebugPanel {
 function createContainer() {
   const container = document.createElement('div');
   container.className = 'ft-debug-panel';
-  
-  // 注入局部样式，用于定制细滚动条。
-  // 注意：全局样式中禁用了滚动条，所以这里需要通过 ::-webkit-scrollbar 强制恢复。
+
   const style = document.createElement('style');
   style.textContent = `
     .ft-debug-panel::-webkit-scrollbar {
@@ -52,24 +52,22 @@ function createContainer() {
   `;
   document.head.appendChild(style);
 
-  // 调试面板独立挂在 body 上，避免被业务 DOM 的布局和层级影响。
   Object.assign(container.style, {
     position: 'fixed',
     top: '12px',
     right: '12px',
     width: '360px',
-    maxHeight: 'calc(100vh - 24px)', // 确保面板高度不超过视口，超出部分自动滚动
+    maxHeight: 'calc(100vh - 24px)',
     overflowX: 'hidden',
     overflowY: 'auto',
-    zIndex: '999', // 确保在最上层
-    scrollbarWidth: 'thin', // 适配 Firefox
+    zIndex: '999',
+    scrollbarWidth: 'thin',
     scrollbarColor: 'rgba(255, 255, 255, 0.22) transparent',
   });
   document.body.appendChild(container);
   return container;
 }
 
-// 当用户在输入框内时，按 D 键不应该切换面板的显示状态。
 function shouldIgnoreToggle(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
   if (!target) return false;
@@ -77,22 +75,31 @@ function shouldIgnoreToggle(event: KeyboardEvent) {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
 }
 
-// 根据场景标识找到对应的中文标签，用于调试面板显示。正常运行时用户是看不到这些内部标识的。
 function getSceneDisplayName(sceneName: string, sceneLabels: Map<string, string>) {
   return sceneLabels.get(sceneName) ?? sceneName;
+}
+
+function addLightFolder(
+  parent: ReturnType<Pane['addFolder']>,
+  title: string,
+  state: EarthDebugSingleLightState,
+  apply: () => void,
+) {
+  const folder = parent.addFolder({ title, expanded: false });
+  folder.addBinding(state, 'enabled', { label: '启用' }).on('change', apply);
+  folder.addBinding(state, 'color', { label: '颜色' }).on('change', apply);
+  folder.addBinding(state, 'intensity', { min: 0, max: 6, step: 0.01, label: '强度' }).on('change', apply);
 }
 
 export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   const container = createContainer();
   const sceneLabels = getSceneLabelMap(opts.segments);
-  // Tweakpane 只负责调试 UI，实际状态仍然来自 ScrollRig / TimelineDirector。
   const pane = new Pane({
     title: 'FT 调试面板',
     container,
     expanded: true,
   });
 
-  // Runtime 分组是只读监控区，用来确认滚动管线当前输出了什么。
   const runtime = {
     progress: 0,
     velocity: 0,
@@ -110,7 +117,7 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
 
   const runtimeFolder = pane.addFolder({ title: '运行状态', expanded: true });
   runtimeFolder.addBinding(runtime, 'progress', { readonly: true, label: '全局进度', format: (value) => value.toFixed(3) });
-  runtimeFolder.addBinding(runtime, 'velocity', { readonly: true, label: '归一化速度', format: (value) => value.toFixed(3) });
+  runtimeFolder.addBinding(runtime, 'velocity', { readonly: true, label: '归一速度', format: (value) => value.toFixed(3) });
   runtimeFolder.addBinding(runtime, 'rawVelocity', { readonly: true, label: '原始速度', format: (value) => value.toFixed(0) });
   runtimeFolder.addBinding(runtime, 'direction', { readonly: true, label: '方向' });
   runtimeFolder.addBinding(runtime, 'segmentType', { readonly: true, label: '段类型' });
@@ -122,26 +129,75 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   runtimeFolder.addBinding(runtime, 'transitionProgress', { readonly: true, label: '转场进度', format: (value) => value.toFixed(3) });
   runtimeFolder.addBinding(runtime, 'mix', { readonly: true, label: '转场混合', format: (value) => value.toFixed(3) });
 
-  const actionsFolder = pane.addFolder({ title: '场景跳转', expanded: true });
+  const actionsFolder = pane.addFolder({ title: '场景跳转', expanded: false });
   for (const segment of opts.director.getSceneSegments()) {
     actionsFolder
-      .addButton({ title: `跳转到${segment.label}` })
-      // 跳转仍然走 ScrollRig 的统一入口，不直接操作 window.scrollTo。
+      .addButton({ title: `跳转到 ${segment.label}` })
       .on('click', () => opts.scroll.scrollToProgress(segment.start, { duration: 0.55 }));
   }
   actionsFolder
     .addButton({ title: '跳转到结尾' })
     .on('click', () => opts.scroll.scrollToProgress(1, { duration: 0.55 }));
 
-  // 这些参数影响滚轮手感，修改后直接回写到 ScrollRig。
   const scrollParams = opts.scroll.getDebugParams();
   const scrollFolder = pane.addFolder({ title: '滚动输入', expanded: false });
   scrollFolder
     .addBinding(scrollParams, 'wheelInputScale', { min: 0.02, max: 1.2, step: 0.01, label: '滚轮倍率' })
     .on('change', () => opts.scroll.applyDebugParams(scrollParams));
   scrollFolder
-    .addBinding(scrollParams, 'wheelDeltaClamp', { min: 12, max: 240, step: 1, label: '单次滚轮上限' })
+    .addBinding(scrollParams, 'wheelDeltaClamp', { min: 12, max: 240, step: 1, label: '滚轮上限' })
     .on('change', () => opts.scroll.applyDebugParams(scrollParams));
+
+  const earthScene = opts.sections.find(isEarthDebugScene);
+  if (earthScene) {
+    const earthDebug = earthScene.getEarthDebugData();
+    const applyEarthDebug = () => earthScene.applyEarthDebug();
+
+    const earthFolder = pane.addFolder({ title: 'Earth 调试', expanded: true });
+
+    const earthStage = earthFolder.addFolder({ title: '舞台元素', expanded: false });
+    earthStage.addBinding(earthDebug.stage, 'forceRingVisible', { label: '强制显示环' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'forceTextVisible', { label: '强制显示文字' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'ringYOffsetStart', { min: -1, max: 1, step: 0.001, label: '环 Y 起点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'ringYOffsetEnd', { min: -1, max: 1, step: 0.001, label: '环 Y 终点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'textYOffsetStart', { min: -1, max: 1, step: 0.001, label: '文字 Y 起点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'textYOffsetEnd', { min: -1, max: 1, step: 0.001, label: '文字 Y 终点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'ringScaleStart', { min: 0.5, max: 2, step: 0.001, label: '环缩放起点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'ringScaleEnd', { min: 0.5, max: 2, step: 0.001, label: '环缩放终点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'textScaleStart', { min: 0.5, max: 2, step: 0.001, label: '文字缩放起点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'textScaleEnd', { min: 0.5, max: 2, step: 0.001, label: '文字缩放终点' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'textOpacityMax', { min: 0, max: 1.5, step: 0.001, label: '文字最大透明度' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'ringOpacityBase', { min: 0, max: 1, step: 0.001, label: '环基础透明度' }).on('change', applyEarthDebug);
+    earthStage.addBinding(earthDebug.stage, 'ringEmissiveBase', { min: 0, max: 2, step: 0.001, label: '环发光强度' }).on('change', applyEarthDebug);
+
+    const earthGlobe = earthFolder.addFolder({ title: '地球材质', expanded: false });
+    earthGlobe.addBinding(earthDebug.globe, 'bumpScale', { min: 0, max: 0.05, step: 0.0005, label: '凹凸强度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudLow', { min: 0, max: 1, step: 0.001, label: '云层低阈值' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudHigh', { min: 0, max: 1, step: 0.001, label: '云层高阈值' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudOpacity', { min: 0, max: 1.5, step: 0.001, label: '云层透明度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudColor', { label: '云层颜色' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'roughnessLow', { min: 0, max: 1.2, step: 0.001, label: '粗糙度低值' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'roughnessHigh', { min: 0, max: 1.2, step: 0.001, label: '粗糙度高值' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'nightIntensity', { min: 0, max: 8, step: 0.01, label: '夜景强度' }).on('change', applyEarthDebug);
+
+    const earthAtmosphere = earthFolder.addFolder({ title: '大气', expanded: false });
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'atmosphereDayColor', { label: '日侧大气色' }).on('change', applyEarthDebug);
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'atmosphereTwilightColor', { label: '暮光大气色' }).on('change', applyEarthDebug);
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'sunDirX', { min: -1, max: 1, step: 0.001, label: '太阳方向 X' }).on('change', applyEarthDebug);
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'sunDirY', { min: -1, max: 1, step: 0.001, label: '太阳方向 Y' }).on('change', applyEarthDebug);
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'sunDirZ', { min: -1, max: 1, step: 0.001, label: '太阳方向 Z' }).on('change', applyEarthDebug);
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'atmosphereScale', { min: 1, max: 1.2, step: 0.001, label: '大气缩放' }).on('change', applyEarthDebug);
+
+    const earthLights = earthFolder.addFolder({ title: '光照', expanded: false });
+    addLightFolder(earthLights, '环境光', earthDebug.lights.ambient, applyEarthDebug);
+    addLightFolder(earthLights, '主方向光', earthDebug.lights.key, applyEarthDebug);
+    addLightFolder(earthLights, '补光', earthDebug.lights.fill, applyEarthDebug);
+    addLightFolder(earthLights, '太阳光', earthDebug.lights.sun, applyEarthDebug);
+
+    earthFolder.addButton({ title: '重置 Earth 参数' }).on('click', () => {
+      earthScene.resetEarthDebug();
+    });
+  }
 
   const timelineFolder = pane.addFolder({ title: '时间轴结构', expanded: false });
   for (const segment of opts.director.getSegments()) {
@@ -155,15 +211,13 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
         : `${getSceneDisplayName(segment.from, sceneLabels)} -> ${getSceneDisplayName(segment.to, sceneLabels)}`,
     };
     const folder = timelineFolder.addFolder({ title: `${segment.index}. ${segment.label}`, expanded: false });
-    // 起止点由 duration 统一计算，运行中只读；需要改结构时直接改 timelineConfig.ts。
     folder.addBinding(info, 'type', { readonly: true, label: '类型' });
-    folder.addBinding(info, 'route', { readonly: true, label: '路由' });
+    folder.addBinding(info, 'route', { readonly: true, label: '路径' });
     folder.addBinding(info, 'duration', { readonly: true, label: '相对长度', format: (value) => value.toFixed(2) });
     folder.addBinding(info, 'start', { readonly: true, label: '起点', format: (value) => value.toFixed(3) });
     folder.addBinding(info, 'end', { readonly: true, label: '终点', format: (value) => value.toFixed(3) });
   }
 
-  // 合成 shader 参数集中放在 Transition 分组，避免散落在场景代码里。
   const transitionParams = opts.transition.getDebugParams();
   const transitionFolder = pane.addFolder({ title: '转场合成', expanded: false });
   transitionFolder
@@ -188,7 +242,6 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     .addBinding(transitionParams, 'sceneBRevealStart', { min: 0, max: 0.95, step: 0.01, label: 'B 场景显现' })
     .on('change', (event) => opts.transition.setSceneBRevealStart(event.value));
 
-  // 背景参数当前是调试态默认值；变更时会立即同步到 SharedBackdrop。
   const backdropParams = {
     color1: '#aebdcd',
     color2: '#edf4f8',
@@ -197,27 +250,16 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     centerGlowStrength: 0.5,
   };
   const backdropFolder = pane.addFolder({ title: '共享背景', expanded: false });
-  backdropFolder
-    .addBinding(backdropParams, 'color1', { label: '颜色 1' })
-    .on('change', (event) => opts.backdrop.setColor1(event.value));
-  backdropFolder
-    .addBinding(backdropParams, 'color2', { label: '颜色 2' })
-    .on('change', (event) => opts.backdrop.setColor2(event.value));
-  backdropFolder
-    .addBinding(backdropParams, 'dotStrength', { min: 0, max: 2, step: 0.01, label: '点阵强度' })
-    .on('change', (event) => opts.backdrop.setDotStrength(event.value));
-  backdropFolder
-    .addBinding(backdropParams, 'blueNoiseStrength', { min: 0, max: 0.15, step: 0.001, label: '蓝噪声' })
-    .on('change', (event) => opts.backdrop.setBlueNoiseStrength(event.value));
-  backdropFolder
-    .addBinding(backdropParams, 'centerGlowStrength', { min: 0, max: 1, step: 0.01, label: '中心光' })
-    .on('change', (event) => opts.backdrop.setCenterGlowStrength(event.value));
+  backdropFolder.addBinding(backdropParams, 'color1', { label: '颜色 1' }).on('change', (event) => opts.backdrop.setColor1(event.value));
+  backdropFolder.addBinding(backdropParams, 'color2', { label: '颜色 2' }).on('change', (event) => opts.backdrop.setColor2(event.value));
+  backdropFolder.addBinding(backdropParams, 'dotStrength', { min: 0, max: 2, step: 0.01, label: '点阵强度' }).on('change', (event) => opts.backdrop.setDotStrength(event.value));
+  backdropFolder.addBinding(backdropParams, 'blueNoiseStrength', { min: 0, max: 0.15, step: 0.001, label: '蓝噪强度' }).on('change', (event) => opts.backdrop.setBlueNoiseStrength(event.value));
+  backdropFolder.addBinding(backdropParams, 'centerGlowStrength', { min: 0, max: 1, step: 0.01, label: '中心光' }).on('change', (event) => opts.backdrop.setCenterGlowStrength(event.value));
 
   const engineFolder = pane.addFolder({ title: '渲染引擎', expanded: false });
   engineFolder.addButton({ title: '暂停' }).on('click', () => opts.engine.stop());
   engineFolder.addButton({ title: '继续' }).on('click', () => opts.engine.start());
 
-  // Scenes 分组只展示场景元信息，避免调试面板越权修改场景内部状态。
   const sceneFolder = pane.addFolder({ title: '场景信息', expanded: false });
   for (const scene of opts.sections) {
     const info = {
@@ -239,7 +281,6 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   const onKeydown = (event: KeyboardEvent) => {
     if (shouldIgnoreToggle(event)) return;
     if (event.key.toLowerCase() === 'd') {
-      // 输入框聚焦时不响应快捷键，避免调参数时误关面板。
       setVisible(!visible);
     }
   };
@@ -263,7 +304,6 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
       runtime.mix = frame.mix;
 
       const now = performance.now();
-      // 面板刷新节流到约 10fps，调试 UI 不应该抢占主渲染循环。
       if (visible && now - lastRefresh > 100) {
         pane.refresh();
         lastRefresh = now;

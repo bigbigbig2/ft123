@@ -38,6 +38,14 @@ vec4 sampleSafe(sampler2D source, vec2 uv) {
   return texture2D(source, uv);
 }
 
+vec3 unpremultiplyRgb(vec4 color) {
+  float alpha = saturate(color.a);
+  if (alpha <= 0.0001) {
+    return vec3(0.0);
+  }
+  return color.rgb / alpha;
+}
+
 vec3 composeOver(vec3 base, vec4 layer) {
   return mix(base, layer.rgb, saturate(layer.a));
 }
@@ -50,9 +58,12 @@ vec4 sampleChromaticStill(sampler2D source, vec2 uv, float strength) {
   vec4 base = sampleSafe(source, uv);
   vec4 r = sampleSafe(source, uv + offset);
   vec4 b = sampleSafe(source, uv - offset);
+  vec3 baseRgb = unpremultiplyRgb(base);
+  vec3 rRgb = unpremultiplyRgb(r);
+  vec3 bRgb = unpremultiplyRgb(b);
 
-  vec4 color = vec4(vec3(r.r, base.g, b.b), max(base.a, max(r.a, b.a)));
-  color.rgb = mix(base.rgb, color.rgb, saturate(strength));
+  vec4 color = vec4(vec3(rRgb.r, baseRgb.g, bRgb.b), max(base.a, max(r.a, b.a)));
+  color.rgb = mix(baseRgb, color.rgb, saturate(strength));
   return color;
 }
 
@@ -73,6 +84,7 @@ vec4 sampleChromaticSmear(sampler2D source, vec2 uv, vec2 direction, float amoun
     
     vec2 offsetUv = uv - direction * (amount * curveT);
     vec4 samp = sampleSafe(source, offsetUv);
+    vec3 sampRgb = unpremultiplyRgb(samp);
     
     // 生成彩虹色差权重：头部红，中部绿，尾部蓝
     float r = smoothstep(0.8, 0.0, t);
@@ -84,7 +96,7 @@ vec4 sampleChromaticSmear(sampler2D source, vec2 uv, vec2 direction, float amoun
     vec3 tint = mix(vec3(1.0), vec3(r, g, b), saturate(chroma)) * fade;
     
     // 关键：乘以 samp.a 避免透明背景污染边缘（消除黑边）
-    accumRGB += samp.rgb * samp.a * tint; 
+    accumRGB += sampRgb * samp.a * tint; 
     weightSum += samp.a * tint;
     
     accumAlpha += samp.a * fade;
