@@ -35,7 +35,7 @@ function colorToHex(color: THREE.Color) {
 
 function normalizeSunDirection(x: number, y: number, z: number) {
   const dir = new THREE.Vector3(x, y, z);
-  if (dir.lengthSq() < 0.000001) return new THREE.Vector3(0.25, 0.16, 0.36).normalize();
+  if (dir.lengthSq() < 0.000001) return new THREE.Vector3(0.536, 0.343, 0.772).normalize();
   return dir.normalize();
 }
 
@@ -93,18 +93,34 @@ export interface EarthDebugStageState {
 
 export interface EarthDebugGlobeState {
   bumpScale: number;
+  normalScale: number;
+  dayBrightness: number;
+  daySaturation: number;
+  oceanLift: number;
+  oceanCyanShift: number;
+  landLift: number;
+  landDeYellow: number;
+  vegetationBoost: number;
+  hazeStrength: number;
   cloudLow: number;
   cloudHigh: number;
   cloudOpacity: number;
+  cloudBrightness: number;
   cloudColor: string;
-  roughnessLow: number;
-  roughnessHigh: number;
+  oceanRoughness: number;
+  landRoughness: number;
+  cloudRoughness: number;
+  oceanSpecStrength: number;
+  oceanFresnelStrength: number;
   nightIntensity: number;
+  nightFadeStart: number;
+  nightFadeEnd: number;
 }
 
 export interface EarthDebugAtmosphereState {
   atmosphereDayColor: string;
   atmosphereTwilightColor: string;
+  atmosphereStrength: number;
   sunDirX: number;
   sunDirY: number;
   sunDirZ: number;
@@ -191,7 +207,22 @@ export async function createEarthScene() {
   const ambientLight = scene.scene.children.find((child) => child instanceof THREE.AmbientLight) as THREE.AmbientLight | undefined;
   const [keyLight, fillLight] = scene.scene.children.filter((child) => child instanceof THREE.DirectionalLight) as THREE.DirectionalLight[];
 
-  const sun = new THREE.DirectionalLight('#ffffff', 1.0);
+  if (ambientLight) {
+    ambientLight.intensity = 0.62;
+    ambientLight.color.set('#dbe7f4');
+  }
+  if (keyLight) {
+    keyLight.intensity = 1.1;
+    keyLight.color.set('#f5f8ff');
+  }
+  if (fillLight) {
+    fillLight.intensity = 1.63;
+    fillLight.color.set('#f5f8ff');
+    fillLight.position.set(-3.4, 1.8, 2.1);
+    fillLight.visible = true;
+  }
+
+  const sun = new THREE.DirectionalLight('#fff7ea', 2.3);
   sun.position.copy(earth.sunDirection).multiplyScalar(6);
   scene.scene.add(sun);
 
@@ -280,17 +311,33 @@ export async function createEarthScene() {
     },
     globe: {
       bumpScale: earth.globeMaterial.bumpScale,
+      normalScale: earth.globeMaterial.normalScale.x,
+      dayBrightness: earth.materialUniforms.uDayBrightness.value,
+      daySaturation: earth.materialUniforms.uDaySaturation.value,
+      oceanLift: earth.materialUniforms.uOceanLift.value,
+      oceanCyanShift: earth.materialUniforms.uOceanCyanShift.value,
+      landLift: earth.materialUniforms.uLandLift.value,
+      landDeYellow: earth.materialUniforms.uLandDeYellow.value,
+      vegetationBoost: earth.materialUniforms.uVegetationBoost.value,
+      hazeStrength: earth.materialUniforms.uHazeStrength.value,
       cloudLow: earth.materialUniforms.uCloudLow.value,
       cloudHigh: earth.materialUniforms.uCloudHigh.value,
       cloudOpacity: earth.materialUniforms.uCloudOpacity.value,
+      cloudBrightness: earth.materialUniforms.uCloudBrightness.value,
       cloudColor: colorToHex(earth.materialUniforms.uCloudColor.value),
-      roughnessLow: earth.materialUniforms.uRoughnessLow.value,
-      roughnessHigh: earth.materialUniforms.uRoughnessHigh.value,
+      oceanRoughness: earth.materialUniforms.uOceanRoughness.value,
+      landRoughness: earth.materialUniforms.uLandRoughness.value,
+      cloudRoughness: earth.materialUniforms.uCloudRoughness.value,
+      oceanSpecStrength: earth.materialUniforms.uOceanSpecStrength.value,
+      oceanFresnelStrength: earth.materialUniforms.uOceanFresnelStrength.value,
       nightIntensity: earth.materialUniforms.uNightIntensity.value,
+      nightFadeStart: earth.materialUniforms.uNightFadeStart.value,
+      nightFadeEnd: earth.materialUniforms.uNightFadeEnd.value,
     },
     atmosphere: {
       atmosphereDayColor: colorToHex(earth.materialUniforms.uAtmosphereDay.value),
       atmosphereTwilightColor: colorToHex(earth.materialUniforms.uAtmosphereTwilight.value),
+      atmosphereStrength: earth.materialUniforms.uAtmosphereStrength.value,
       sunDirX: earth.sunDirection.x,
       sunDirY: earth.sunDirection.y,
       sunDirZ: earth.sunDirection.z,
@@ -307,19 +354,36 @@ export async function createEarthScene() {
 
   function applyGlobeDebugSettings() {
     earth.globeMaterial.bumpScale = debugData.globe.bumpScale;
+    earth.globeMaterial.normalScale.setScalar(debugData.globe.normalScale);
+    earth.materialUniforms.uDayBrightness.value = debugData.globe.dayBrightness;
+    earth.materialUniforms.uDaySaturation.value = debugData.globe.daySaturation;
+    earth.materialUniforms.uOceanLift.value = debugData.globe.oceanLift;
+    earth.materialUniforms.uOceanCyanShift.value = debugData.globe.oceanCyanShift;
+    earth.materialUniforms.uLandLift.value = debugData.globe.landLift;
+    earth.materialUniforms.uLandDeYellow.value = debugData.globe.landDeYellow;
+    earth.materialUniforms.uVegetationBoost.value = debugData.globe.vegetationBoost;
+    earth.materialUniforms.uHazeStrength.value = debugData.globe.hazeStrength;
     earth.materialUniforms.uCloudLow.value = debugData.globe.cloudLow;
     earth.materialUniforms.uCloudHigh.value = debugData.globe.cloudHigh;
     earth.materialUniforms.uCloudOpacity.value = debugData.globe.cloudOpacity;
+    earth.materialUniforms.uCloudBrightness.value = debugData.globe.cloudBrightness;
     earth.materialUniforms.uCloudColor.value.set(debugData.globe.cloudColor);
-    earth.materialUniforms.uRoughnessLow.value = debugData.globe.roughnessLow;
-    earth.materialUniforms.uRoughnessHigh.value = debugData.globe.roughnessHigh;
+    earth.cloudMaterial.roughness = debugData.globe.cloudRoughness;
+    earth.cloudMaterial.color.set(debugData.globe.cloudColor);
+    earth.materialUniforms.uOceanRoughness.value = debugData.globe.oceanRoughness;
+    earth.materialUniforms.uLandRoughness.value = debugData.globe.landRoughness;
+    earth.materialUniforms.uCloudRoughness.value = debugData.globe.cloudRoughness;
     earth.materialUniforms.uNightIntensity.value = debugData.globe.nightIntensity;
-    earth.globeMaterial.needsUpdate = true;
+    earth.materialUniforms.uNightFadeStart.value = debugData.globe.nightFadeStart;
+    earth.materialUniforms.uNightFadeEnd.value = debugData.globe.nightFadeEnd;
+    earth.materialUniforms.uOceanSpecStrength.value = debugData.globe.oceanSpecStrength;
+    earth.materialUniforms.uOceanFresnelStrength.value = debugData.globe.oceanFresnelStrength;
   }
 
   function applyAtmosphereDebugSettings() {
     earth.materialUniforms.uAtmosphereDay.value.set(debugData.atmosphere.atmosphereDayColor);
     earth.materialUniforms.uAtmosphereTwilight.value.set(debugData.atmosphere.atmosphereTwilightColor);
+    earth.materialUniforms.uAtmosphereStrength.value = debugData.atmosphere.atmosphereStrength;
 
     const sunDirection = normalizeSunDirection(
       debugData.atmosphere.sunDirX,

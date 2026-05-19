@@ -183,18 +183,34 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthStage.addBinding(earthDebug.stage, 'ringEmissiveBase', { min: 0, max: 2, step: 0.001, label: '环发光强度' }).on('change', applyEarthDebug);
 
     const earthGlobe = earthFolder.addFolder({ title: '地球材质', expanded: false });
-    earthGlobe.addBinding(earthDebug.globe, 'bumpScale', { min: 0, max: 0.05, step: 0.0005, label: '凹凸强度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'bumpScale', { min: 0, max: 0.08, step: 0.0005, label: '凹凸强度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'normalScale', { min: 0, max: 2.5, step: 0.01, label: '法线强度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'dayBrightness', { min: 0.6, max: 1.6, step: 0.01, label: '白天地表亮度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'daySaturation', { min: 0, max: 1.5, step: 0.01, label: '白天地表饱和' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'oceanLift', { min: 0, max: 1, step: 0.01, label: '海洋提亮偏青' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'oceanCyanShift', { min: 0, max: 1, step: 0.01, label: '海洋偏青' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'landLift', { min: 0, max: 1, step: 0.01, label: '陆地提亮柔化' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'landDeYellow', { min: 0, max: 1, step: 0.01, label: '陆地去黄' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'vegetationBoost', { min: 0, max: 1, step: 0.01, label: '植被增绿' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'hazeStrength', { min: 0, max: 1, step: 0.01, label: '前向雾化' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudLow', { min: 0, max: 1, step: 0.001, label: '云层低阈值' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudHigh', { min: 0, max: 1, step: 0.001, label: '云层高阈值' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudOpacity', { min: 0, max: 1.5, step: 0.001, label: '云层透明度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudBrightness', { min: 0.5, max: 1.8, step: 0.01, label: '云层亮度' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudColor', { label: '云层颜色' }).on('change', applyEarthDebug);
-    earthGlobe.addBinding(earthDebug.globe, 'roughnessLow', { min: 0, max: 1.2, step: 0.001, label: '粗糙度低值' }).on('change', applyEarthDebug);
-    earthGlobe.addBinding(earthDebug.globe, 'roughnessHigh', { min: 0, max: 1.2, step: 0.001, label: '粗糙度高值' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'oceanRoughness', { min: 0, max: 1, step: 0.001, label: '海面粗糙度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'landRoughness', { min: 0, max: 1, step: 0.001, label: '陆地粗糙度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudRoughness', { min: 0, max: 1, step: 0.001, label: '云层粗糙度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'oceanSpecStrength', { min: 0, max: 3, step: 0.01, label: '海面高光强度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'oceanFresnelStrength', { min: 0, max: 2, step: 0.01, label: '海面边缘反射' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'nightIntensity', { min: 0, max: 8, step: 0.01, label: '夜景强度' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'nightFadeStart', { min: 0, max: 1, step: 0.01, label: '夜景开始显现' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'nightFadeEnd', { min: -1, max: 0.5, step: 0.01, label: '夜景完全显现' }).on('change', applyEarthDebug);
 
     const earthAtmosphere = earthFolder.addFolder({ title: '大气', expanded: false });
     earthAtmosphere.addBinding(earthDebug.atmosphere, 'atmosphereDayColor', { label: '日侧大气色' }).on('change', applyEarthDebug);
     earthAtmosphere.addBinding(earthDebug.atmosphere, 'atmosphereTwilightColor', { label: '暮光大气色' }).on('change', applyEarthDebug);
+    earthAtmosphere.addBinding(earthDebug.atmosphere, 'atmosphereStrength', { min: 0, max: 1.5, step: 0.01, label: '大气强度' }).on('change', applyEarthDebug);
     earthAtmosphere.addBinding(earthDebug.atmosphere, 'sunDirX', { min: -1, max: 1, step: 0.001, label: '太阳方向 X' }).on('change', applyEarthDebug);
     earthAtmosphere.addBinding(earthDebug.atmosphere, 'sunDirY', { min: -1, max: 1, step: 0.001, label: '太阳方向 Y' }).on('change', applyEarthDebug);
     earthAtmosphere.addBinding(earthDebug.atmosphere, 'sunDirZ', { min: -1, max: 1, step: 0.001, label: '太阳方向 Z' }).on('change', applyEarthDebug);
