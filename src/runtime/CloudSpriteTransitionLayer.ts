@@ -35,18 +35,18 @@ export interface CloudSpriteDebugParams {
 }
 
 const DEFAULT_PARAMS: CloudSpriteDebugParams = {
-  enabled: true,
+  enabled: false,
   opacity: 0.86,
-  fillOpacity: 0.62,
+  fillOpacity: 0.54,
   layerOpacity: 0.24,
   foregroundOpacity: 0.08,
   fillCount: 260,
   width: 1650,
   depth: 1320,
-  baseY: -88,
-  fillScale: 44,
-  randomScale: 30,
-  cameraDrift: 26,
+  baseY: -110,
+  fillScale: 38,
+  randomScale: 28,
+  cameraDrift: 40,
   zDrift: 0,
   noiseStrength: 0.72,
   noiseSpeed: 0.22,
@@ -198,11 +198,12 @@ export class CloudSpriteTransitionLayer {
     this.updateVisibility();
 
     const eased = smoothstep(0, 1, this.progress);
-    const cameraY = THREE.MathUtils.lerp(this.params.baseY + 10, this.params.baseY + 170, eased);
-    const cameraZ = THREE.MathUtils.lerp(-120, -120 - this.params.cameraDrift, eased);
-    const lookY = THREE.MathUtils.lerp(this.params.baseY - 75, this.params.baseY - 145, eased);
-    const lookZ = THREE.MathUtils.lerp(280, 560, eased);
+    const cameraY = THREE.MathUtils.lerp(this.params.baseY + 18, this.params.baseY + 190, eased);
+    const cameraZ = THREE.MathUtils.lerp(-160, -460 - this.params.cameraDrift, eased);
+    const lookY = cameraY - 150;
+    const lookZ = cameraZ + 720;
     this.camera.position.set(0, cameraY, cameraZ);
+    this.camera.up.set(0, 1, 0);
     this.camera.lookAt(0, lookY, lookZ);
 
     const zOffset = (eased - 0.5) * this.params.zDrift;
@@ -354,10 +355,11 @@ export class CloudSpriteTransitionLayer {
 
     for (let i = 0; i < count; i++) {
       const depthT = count <= 1 ? 0 : i / (count - 1);
-      const x = (random() - random()) * this.params.width;
-      const y = this.params.baseY + (random() - random()) * 12 - depthT * 18;
-      const z = depthT * this.params.depth + 40;
-      const size = this.params.fillScale + random() * this.params.randomScale;
+      const spread = THREE.MathUtils.lerp(0.36, 1, depthT);
+      const x = (random() - random()) * this.params.width * spread;
+      const y = this.params.baseY + (random() - random()) * 18 + depthT * 36;
+      const z = depthT * this.params.depth + 80;
+      const size = (this.params.fillScale + random() * this.params.randomScale) * THREE.MathUtils.lerp(0.82, 1.5, depthT);
       const flipX = random() > 0.5 ? -1 : 1;
       const flipY = random() > 0.1 ? 1 : -1;
       const rotation = (random() - 0.5) * 0.12;

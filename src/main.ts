@@ -199,7 +199,11 @@ async function bootstrap() {
   transition.setSceneBRevealStart(0.24); // 场景 B 的内容开始显现的混合进度
 
   // 6. UI 与 调试面板
-  const earthOverlay = new EarthOverlay(earthOverlayElement);
+  const introSegment = timeline.find((segment) => segment.type === 'scene' && segment.sceneName === 'intro-video');
+  const brandStartProgress = introSegment
+    ? introSegment.start + (introSegment.end - introSegment.start) * 0.5
+    : 0;
+  const earthOverlay = new EarthOverlay(earthOverlayElement, { brandStartProgress });
   const debugPanel = createDebugPanel({
     engine,
     scroll,
@@ -246,7 +250,7 @@ async function bootstrap() {
     transition.setSceneMistStrength(getEarthMistStrength(earthState));
 
     // 更新屏幕 UI 覆盖层
-    earthOverlay.update(earthState);
+    earthOverlay.update(earthState, frame);
     // 更新调试面板数据
     debugPanel.update(frame, scrollState);
   });

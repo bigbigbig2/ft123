@@ -139,6 +139,24 @@ body::-webkit-scrollbar {
   font-size: 38px;
 }
 
+.earth-overlay__char {
+  --char-progress: 0;
+  display: inline-block;
+  opacity: var(--char-progress);
+  transform:
+    translate3d(
+      calc((1 - var(--char-progress)) * -14px),
+      calc((1 - var(--char-progress)) * 8px),
+      0
+    )
+    scale(calc(0.92 + var(--char-progress) * 0.08));
+  filter: blur(calc((1 - var(--char-progress)) * 5px));
+  text-shadow:
+    0 0 calc(6px + var(--char-progress) * 10px) rgba(255, 255, 255, 0.5),
+    calc((1 - var(--char-progress)) * -10px) 0 14px rgba(151, 210, 255, 0.32);
+  will-change: opacity, transform, filter;
+}
+
 .earth-overlay__phase {
   margin-top: 10px;
   font-size: 20px;
