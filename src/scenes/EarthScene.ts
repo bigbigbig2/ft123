@@ -194,9 +194,10 @@ export async function createEarthScene() {
   });
 
   // 1. 骞跺彂鍔犺浇鎵€鏈夎祫婧?
-  const [earth, ring, text] = await Promise.all([
+  const [earth, ring, ringOutline, text] = await Promise.all([
     createProceduralEarth(), // 绋嬪簭鍖栫敓鎴愮殑鍦扮悆锛堝寘鍚珮绾?Shader 鏉愯川锛?
     loadGLTF(`${EARTH_MODEL_ROOT}/huan.gltf`),
+    loadGLTF(`${EARTH_MODEL_ROOT}/ringOutLine.gltf`),
     loadGLTF(`${EARTH_MODEL_ROOT}/wenzi.gltf`),
   ]);
 
@@ -229,24 +230,30 @@ export async function createEarthScene() {
   // 3. 鏉愯川涓庝綅缃垵濮嬪寲
   const ringMaterial = createRingMaterial();
   setMaterial(ring.scene, ringMaterial);
+  setMaterial(ringOutline.scene, ringMaterial);
+  const ringGroup = new THREE.Group();
+  ringGroup.name = 'earth-ring-group';
+  ringGroup.add(ring.scene, ringOutline.scene);
   const textMaterials = normalizeText(text.scene); // 鑷姩鎻愬彇骞舵爣鍑嗗寲鏂囧瓧鏉愯川
 
   earth.group.scale.setScalar(1.2);
-  ring.scene.scale.setScalar(0.92);
+  ringGroup.scale.setScalar(0.92);
   text.scene.scale.setScalar(0.92);
   
   // 杈呭姪宸ュ叿锛氬皢妯″瀷涓績瀵归綈鍒版寚瀹氫綅缃?
   moveBoxCenterTo(earth.group, new THREE.Vector3(0, 0.2, 0));
-  moveBoxCenterTo(ring.scene, new THREE.Vector3(0, -0.1, 0));
-  moveBoxCenterTo(text.scene, new THREE.Vector3(0, -0.09, 0));
+  const earthUiGroup = new THREE.Group();
+  earthUiGroup.name = 'earth-ui-group';
+  earthUiGroup.add(ringGroup, text.scene);
+  moveBoxCenterTo(earthUiGroup, new THREE.Vector3(0, -0.1, 0));
   
-  ring.scene.visible = false;
+  ringGroup.visible = false;
   text.scene.visible = false;
 
   // 4. 灏嗘墍鏈夐儴浠剁粍鍚堝埌涓€涓牴鑺傜偣涓?
   const root = new THREE.Group();
   root.name = 'earth-model-root';
-  root.add(earth.group, ring.scene, text.scene);
+  root.add(earth.group, earthUiGroup);
   scene.attachAndFit(root, 3.0);
 
   // 璁板綍鍒濆鐘舵€侊紝鐢ㄤ簬鍚庣画鎻掑€?
@@ -259,9 +266,9 @@ export async function createEarthScene() {
   const baseModelRotationX = scene.modelRoot.rotation.x;
   const baseCameraPosition = scene.camera.position.clone();
   const baseCameraFov = scene.camera.fov;
-  const baseRingPosition = ring.scene.position.clone();
+  const baseRingPosition = ringGroup.position.clone();
   const baseTextPosition = text.scene.position.clone();
-  const baseRingScale = ring.scene.scale.x;
+  const baseRingScale = ringGroup.scale.x;
   const baseTextScale = text.scene.scale.x;
   const baseAtmosphereScale = 1.04;
   const cameraLookAt = new THREE.Vector3();
@@ -435,12 +442,12 @@ export async function createEarthScene() {
   /** 鑸炲彴瑁呴グ鏃堕棿绾匡細澶勭悊鍦嗙幆鍜屾枃瀛楃殑鍑虹幇鍔ㄧ敾 */
   const applyStageTimeline = ({ staging, textReveal, focus }: EarthTimeline) => {
     // 鏍规嵁杩涘害鍐冲畾鏄鹃殣锛屽噺灏戜笉蹇呰鐨?GPU 缁樺埗
-    ring.scene.visible = debugData.stage.forceRingVisible || (staging > 0.001 && focus > 0.001);
+    ringGroup.visible = debugData.stage.forceRingVisible || (staging > 0.001 && focus > 0.001);
     text.scene.visible = debugData.stage.forceTextVisible || (textReveal > 0.001 && focus > 0.001);
 
-    ring.scene.position.y = baseRingPosition.y + THREE.MathUtils.lerp(debugData.stage.ringYOffsetStart, debugData.stage.ringYOffsetEnd, staging);
+    ringGroup.position.y = baseRingPosition.y + THREE.MathUtils.lerp(debugData.stage.ringYOffsetStart, debugData.stage.ringYOffsetEnd, staging);
     text.scene.position.y = baseTextPosition.y + THREE.MathUtils.lerp(debugData.stage.textYOffsetStart, debugData.stage.textYOffsetEnd, textReveal);
-    ring.scene.scale.setScalar(baseRingScale * THREE.MathUtils.lerp(debugData.stage.ringScaleStart, debugData.stage.ringScaleEnd, staging));
+    ringGroup.scale.setScalar(baseRingScale * THREE.MathUtils.lerp(debugData.stage.ringScaleStart, debugData.stage.ringScaleEnd, staging));
     text.scene.scale.setScalar(baseTextScale * THREE.MathUtils.lerp(debugData.stage.textScaleStart, debugData.stage.textScaleEnd, textReveal));
 
     // 鍔ㄦ€佽皟鏁存潗璐ㄥ弬鏁帮細缁撳悎 staging 鍜?focus锛堣浆鍦烘贩鍚堝害锛?
