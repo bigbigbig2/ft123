@@ -10,11 +10,11 @@ const DEFAULT_BLOOM_SCALE = 0.5;
 const DEFAULT_BLOOM_STRENGTH = 1.2;
 const DEFAULT_BLOOM_RADIUS = 5.5;
 
-function createRenderTarget(width: number, height: number, depthBuffer = false) {
+function createRenderTarget(width: number, height: number, depthBuffer = false, samples = 0) {
   const target = new THREE.WebGLRenderTarget(width, height, {
     depthBuffer,
     stencilBuffer: false,
-    samples: 0,
+    samples,
   });
   target.texture.colorSpace = THREE.SRGBColorSpace;
   target.texture.generateMipmaps = false;
@@ -36,7 +36,7 @@ export class ScenePostProcessor {
   private bloomHeight = 1;
   private bloomScale = DEFAULT_BLOOM_SCALE;
 
-  private bloomSource = createRenderTarget(1, 1, true);
+  private bloomSource = createRenderTarget(1, 1, true, 4);
   private blurPing = createRenderTarget(1, 1);
   private blurPong = createRenderTarget(1, 1);
 
@@ -45,6 +45,12 @@ export class ScenePostProcessor {
   private quad: THREE.Mesh;
   private blurMaterial: THREE.ShaderMaterial;
   private compositeMaterial: THREE.ShaderMaterial;
+  private depthPrepassMaterial = new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    depthWrite: true,
+    depthTest: true,
+    side: THREE.DoubleSide,
+  });
   private tintColor = new THREE.Color(0xffffff);
 
   constructor() {
@@ -134,10 +140,13 @@ export class ScenePostProcessor {
     outputTarget: THREE.WebGLRenderTarget,
   ) {
     const effects = getScenePostEffects(scene);
-    const bloom = effects?.bloom;
-    if (!bloom?.enabled) return;
+    const blooms = Array.isArray(effects?.bloom) ? effects.bloom : effects?.bloom ? [effects.bloom] : [];
+    const activeBlooms = blooms.filter((bloom) => bloom.enabled);
+    if (activeBlooms.length === 0) return;
 
-    this.renderBloom(renderer, scene, outputTarget, bloom);
+    for (const bloom of activeBlooms) {
+      this.renderBloom(renderer, scene, outputTarget, bloom);
+    }
   }
 
   dispose() {
@@ -147,6 +156,7 @@ export class ScenePostProcessor {
     this.quad.geometry.dispose();
     this.blurMaterial.dispose();
     this.compositeMaterial.dispose();
+    this.depthPrepassMaterial.dispose();
   }
 
   private renderBloom(
@@ -160,14 +170,23 @@ export class ScenePostProcessor {
     const previousClearColor = renderer.getClearColor(new THREE.Color());
     const previousClearAlpha = renderer.getClearAlpha();
     const previousCameraMask = scene.camera.layers.mask;
+    const previousOverrideMaterial = scene.scene.overrideMaterial;
 
     this.ensureBloomTargets(bloom.resolutionScale ?? DEFAULT_BLOOM_SCALE);
     renderer.autoClear = false;
 
-    scene.camera.layers.set(bloom.layer);
     renderer.setRenderTarget(this.bloomSource);
     renderer.setClearColor(0x000000, 0);
     renderer.clear(true, true, true);
+
+    // Prime the bloom pass depth buffer with the normal scene, so glowing
+    // objects hidden behind foreground geometry do not bleed through.
+    scene.camera.layers.set(0);
+    scene.scene.overrideMaterial = this.depthPrepassMaterial;
+    renderer.render(scene.scene, scene.camera);
+    scene.scene.overrideMaterial = previousOverrideMaterial;
+
+    scene.camera.layers.set(bloom.layer);
     renderer.render(scene.scene, scene.camera);
     scene.camera.layers.mask = previousCameraMask;
 

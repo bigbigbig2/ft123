@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { ModelScene } from './ModelScene';
 import type { SceneBase, ScenePostEffects, SceneScrollState } from './SceneBase';
 import { createProceduralEarth } from './earth/createEarthModel';
@@ -12,6 +15,7 @@ import { loadGLTF } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
 const EARTH_TEXT_BLOOM_LAYER = 10;
+const EARTH_RING_EDGE_BLOOM_LAYER = 11;
 const EARTH_BOTTOM_ROOT = '/textures/earth/bottom';
 const EARTH_BOTTOM_LAYERS = [
   { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%881%E4%B8%8D%E5%8A%A8.png`, speed: 0 },
@@ -74,6 +78,39 @@ function setRingSurfaceMaterials(
   });
 }
 
+function createRingEdgeLines(root: THREE.Object3D, material: LineMaterial) {
+  const lines: LineSegments2[] = [];
+  const faceMeshes: THREE.Mesh[] = [];
+
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (obj.userData.isRingEdgeLine) return;
+    if (!mesh.isMesh || !isRingTopFace(mesh)) return;
+    if (!(mesh.geometry instanceof THREE.BufferGeometry)) return;
+    faceMeshes.push(mesh);
+  });
+
+  for (const mesh of faceMeshes) {
+    const edges = new THREE.EdgesGeometry(mesh.geometry, 8);
+    const position = edges.getAttribute('position');
+    const lineGeometry = new LineSegmentsGeometry();
+    lineGeometry.setPositions(Array.from(position.array as ArrayLike<number>));
+    edges.dispose();
+
+    const line = new LineSegments2(lineGeometry, material);
+    line.computeLineDistances();
+    line.name = `${mesh.name || 'ring-face'}-edge`;
+    line.userData.isRingEdgeLine = true;
+    line.renderOrder = 30;
+    line.frustumCulled = false;
+    line.layers.enable(EARTH_RING_EDGE_BLOOM_LAYER);
+    mesh.add(line);
+    lines.push(line);
+  }
+
+  return lines;
+}
+
 function colorToHex(color: THREE.Color) {
   return `#${color.getHexString()}`;
 }
@@ -127,6 +164,17 @@ export interface EarthDebugStageState {
   textBloomTint: string;
 }
 
+export interface EarthDebugRingEdgeState {
+  visible: boolean;
+  color: string;
+  opacity: number;
+  lineWidth: number;
+  bloomEnabled: boolean;
+  bloomStrength: number;
+  bloomRadius: number;
+  bloomTint: string;
+}
+
 export interface EarthDebugMaterialState {
   textColor: string;
   textOpacity: number;
@@ -149,6 +197,17 @@ export interface EarthDebugSingleMotionState {
 export interface EarthDebugMotionState {
   ring: EarthDebugSingleMotionState;
   earth: EarthDebugSingleMotionState;
+}
+
+export interface EarthDebugEarthTransformState {
+  scale: number;
+}
+
+export interface EarthDebugUiTransformState {
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  scale: number;
 }
 
 export interface EarthDebugBottomHudState {
@@ -214,8 +273,11 @@ export interface EarthDebugLightState {
 
 export interface EarthDebugData {
   stage: EarthDebugStageState;
+  ringEdge: EarthDebugRingEdgeState;
   materials: EarthDebugMaterialState;
   motion: EarthDebugMotionState;
+  uiTransform: EarthDebugUiTransformState;
+  earthTransform: EarthDebugEarthTransformState;
   bottomHud: EarthDebugBottomHudState;
   globe: EarthDebugGlobeState;
   atmosphere: EarthDebugAtmosphereState;
@@ -339,6 +401,21 @@ export async function createEarthScene() {
   const ringMaterial = createRingUiMaterial();
   const ringSideMaterial = createRingUiMaterial();
   setRingSurfaceMaterials(ring.scene, ringMaterial, ringSideMaterial);
+  const ringEdgeMaterial = new LineMaterial({
+    color: '#9ff8ff',
+    transparent: true,
+    opacity: 0.85,
+    linewidth: 1.8,
+    worldUnits: false,
+    depthWrite: false,
+    depthTest: true,
+    alphaToCoverage: true,
+  });
+  ringEdgeMaterial.resolution.set(
+    Math.max(1, Math.round(window.innerWidth * window.devicePixelRatio)),
+    Math.max(1, Math.round(window.innerHeight * window.devicePixelRatio)),
+  );
+  const ringEdgeLines = createRingEdgeLines(ring.scene, ringEdgeMaterial);
   const ringGroup = new THREE.Group();
   ringGroup.name = 'earth-ring-group';
   ringGroup.add(ring.scene);
@@ -355,6 +432,7 @@ export async function createEarthScene() {
   earthUiGroup.name = 'earth-ui-group';
   earthUiGroup.add(ringGroup, text.scene);
   moveBoxCenterTo(earthUiGroup, new THREE.Vector3(0, -0.1, 0));
+  const baseEarthUiPosition = earthUiGroup.position.clone();
   
   ringGroup.visible = false;
   text.scene.visible = false;
@@ -411,20 +489,30 @@ export async function createEarthScene() {
 
   const debugData: EarthDebugData = {
     stage: {
-      textBloomEnabled: false,
-      textBloomStrength: 1.45,
-      textBloomRadius: 6.5,
-      textBloomTint: '#bfefff',
+      textBloomEnabled: true,
+      textBloomStrength: 0.87,
+      textBloomRadius: 0.3,
+      textBloomTint: '#d3e4e8',
+    },
+    ringEdge: {
+      visible: true,
+      color: '#e0e2e2',
+      opacity: 1.06,
+      lineWidth: 1.4,
+      bloomEnabled: true,
+      bloomStrength: 2.43,
+      bloomRadius: 0.8,
+      bloomTint: '#aed3d5',
     },
     materials: {
       textColor: '#ffffff',
-      textOpacity: 0.92,
-      ringColor: '#acd0e8',
-      ringOpacity: 0.4,
+      textOpacity: 1.5,
+      ringColor: '#57c3e8',
+      ringOpacity: 0.17,
       ringEmissiveColor: '#000000',
-      ringEmissiveIntensity: 0.23,
-      sideColor: '#5c697f',
-      sideOpacity: 0.08,
+      ringEmissiveIntensity: 0,
+      sideColor: '#c7d3e2',
+      sideOpacity: 0.55,
       sideEmissiveColor: '#3aa9c4',
       sideEmissiveIntensity: 0,
     },
@@ -439,6 +527,15 @@ export async function createEarthScene() {
         autoRotateSpeed: 0.25,
         initialRotationY: -1.229,
       },
+    },
+    uiTransform: {
+      offsetX: 0,
+      offsetY: 0,
+      offsetZ: 0,
+      scale: 1,
+    },
+    earthTransform: {
+      scale: 0.85,
     },
     bottomHud: {
       visible: true,
@@ -516,6 +613,17 @@ export async function createEarthScene() {
     }
   }
 
+  function applyRingEdgeDebugSettings() {
+    ringEdgeMaterial.color.set(debugData.ringEdge.color);
+    ringEdgeMaterial.opacity = debugData.ringEdge.opacity;
+    ringEdgeMaterial.linewidth = debugData.ringEdge.lineWidth;
+    ringEdgeMaterial.needsUpdate = true;
+
+    for (const line of ringEdgeLines) {
+      line.visible = debugData.ringEdge.visible;
+    }
+  }
+
   function applyMotionDebugSettings() {
     const ringInitialDelta = debugData.motion.ring.initialRotationY - appliedRingInitialRotationY;
     if (Math.abs(ringInitialDelta) > 0.000001) {
@@ -528,6 +636,19 @@ export async function createEarthScene() {
       earthRotationY += earthInitialDelta;
       appliedEarthInitialRotationY = debugData.motion.earth.initialRotationY;
     }
+  }
+
+  function applyUiTransformDebugSettings() {
+    earthUiGroup.position.set(
+      baseEarthUiPosition.x + debugData.uiTransform.offsetX,
+      baseEarthUiPosition.y + debugData.uiTransform.offsetY,
+      baseEarthUiPosition.z + debugData.uiTransform.offsetZ,
+    );
+    earthUiGroup.scale.setScalar(debugData.uiTransform.scale);
+  }
+
+  function applyEarthTransformDebugSettings() {
+    earth.group.scale.setScalar(1.2 * debugData.earthTransform.scale);
   }
 
   function applyBottomHudDebugSettings() {
@@ -652,6 +773,7 @@ export async function createEarthScene() {
     ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
     ringSideMaterial.opacity = debugData.materials.sideOpacity * staging * focus;
     ringSideMaterial.emissiveIntensity = debugData.materials.sideEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
+    ringEdgeMaterial.opacity = debugData.ringEdge.opacity * staging * focus;
 
     for (const material of textMaterials) {
       material.opacity = debugData.materials.textOpacity * textReveal * focus;
@@ -660,7 +782,10 @@ export async function createEarthScene() {
 
   function applyResolvedState(sourceState: SceneScrollState) {
     applyMaterialDebugSettings();
+    applyRingEdgeDebugSettings();
     applyMotionDebugSettings();
+    applyUiTransformDebugSettings();
+    applyEarthTransformDebugSettings();
     applyBottomHudDebugSettings();
     applyGlobeDebugSettings();
     applyAtmosphereDebugSettings();
@@ -685,6 +810,16 @@ export async function createEarthScene() {
     applyResolvedState(state);
   };
 
+  const baseSetSize = scene.setSize.bind(scene);
+  scene.setSize = (width: number, height: number) => {
+    baseSetSize(width, height);
+    const pixelRatio = Math.min(window.devicePixelRatio, 2);
+    ringEdgeMaterial.resolution.set(
+      Math.max(1, Math.round(width * pixelRatio)),
+      Math.max(1, Math.round(height * pixelRatio)),
+    );
+  };
+
   const baseUpdate = scene.update.bind(scene);
   scene.update = (delta: number, elapsed: number) => {
     baseUpdate(delta, elapsed);
@@ -702,14 +837,24 @@ export async function createEarthScene() {
   };
 
   const getPostEffects = (): ScenePostEffects => ({
-    bloom: {
-      enabled: debugData.stage.textBloomEnabled && text.scene.visible,
-      layer: EARTH_TEXT_BLOOM_LAYER,
-      strength: debugData.stage.textBloomStrength,
-      radius: debugData.stage.textBloomRadius,
-      tint: debugData.stage.textBloomTint,
-      resolutionScale: 0.5,
-    },
+    bloom: [
+      {
+        enabled: debugData.stage.textBloomEnabled && text.scene.visible,
+        layer: EARTH_TEXT_BLOOM_LAYER,
+        strength: debugData.stage.textBloomStrength,
+        radius: debugData.stage.textBloomRadius,
+        tint: debugData.stage.textBloomTint,
+        resolutionScale: 0.5,
+      },
+      {
+        enabled: debugData.ringEdge.bloomEnabled && debugData.ringEdge.visible && ringGroup.visible,
+        layer: EARTH_RING_EDGE_BLOOM_LAYER,
+        strength: debugData.ringEdge.bloomStrength,
+        radius: debugData.ringEdge.bloomRadius,
+        tint: debugData.ringEdge.bloomTint,
+        resolutionScale: 1,
+      },
+    ],
   });
 
   const earthScene = scene as ModelScene & EarthSceneDebugControls & { getPostEffects(): ScenePostEffects };

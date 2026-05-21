@@ -49,7 +49,7 @@ export interface SceneBloomEffect {
 }
 
 export interface ScenePostEffects {
-  bloom?: SceneBloomEffect;
+  bloom?: SceneBloomEffect | SceneBloomEffect[];
 }
 
 export interface PostProcessableScene extends SceneBase {

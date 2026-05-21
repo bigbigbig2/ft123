@@ -171,11 +171,16 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     ringMotion.addBinding(earthDebug.motion.ring, 'autoRotateEnabled', { label: '自动旋转' }).on('change', applyEarthDebug);
     ringMotion.addBinding(earthDebug.motion.ring, 'autoRotateSpeed', { min: -0.4, max: 0.4, step: 0.001, label: '旋转速度' }).on('change', applyEarthDebug);
     ringMotion.addBinding(earthDebug.motion.ring, 'initialRotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '初始角度 Y' }).on('change', applyEarthDebug);
+    ringMotion.addBinding(earthDebug.uiTransform, 'offsetX', { min: -1, max: 1, step: 0.001, label: '整体偏移 X' }).on('change', applyEarthDebug);
+    ringMotion.addBinding(earthDebug.uiTransform, 'offsetY', { min: -1, max: 1, step: 0.001, label: '整体偏移 Y' }).on('change', applyEarthDebug);
+    ringMotion.addBinding(earthDebug.uiTransform, 'offsetZ', { min: -1, max: 1, step: 0.001, label: '整体偏移 Z' }).on('change', applyEarthDebug);
+    ringMotion.addBinding(earthDebug.uiTransform, 'scale', { min: 0.2, max: 2, step: 0.001, label: '整体缩放' }).on('change', applyEarthDebug);
 
     const earthMotion = earthFolder.addFolder({ title: '地球运动', expanded: true });
     earthMotion.addBinding(earthDebug.motion.earth, 'autoRotateEnabled', { label: '自动旋转' }).on('change', applyEarthDebug);
     earthMotion.addBinding(earthDebug.motion.earth, 'autoRotateSpeed', { min: -0.4, max: 0.4, step: 0.001, label: '旋转速度' }).on('change', applyEarthDebug);
     earthMotion.addBinding(earthDebug.motion.earth, 'initialRotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '初始角度 Y' }).on('change', applyEarthDebug);
+    earthMotion.addBinding(earthDebug.earthTransform, 'scale', { min: 0.2, max: 2, step: 0.001, label: '整体缩放' }).on('change', applyEarthDebug);
 
     const earthBottomHud = earthFolder.addFolder({ title: '底部 HUD', expanded: true });
     earthBottomHud.addBinding(earthDebug.bottomHud, 'visible', { label: '显示' }).on('change', applyEarthDebug);
@@ -193,6 +198,16 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthTextBloom.addBinding(earthDebug.stage, 'textBloomStrength', { min: 0, max: 8, step: 0.01, label: '强度' }).on('change', applyEarthDebug);
     earthTextBloom.addBinding(earthDebug.stage, 'textBloomRadius', { min: 0, max: 24, step: 0.1, label: '半径' }).on('change', applyEarthDebug);
     earthTextBloom.addBinding(earthDebug.stage, 'textBloomTint', { label: '颜色' }).on('change', applyEarthDebug);
+
+    const earthRingEdge = earthFolder.addFolder({ title: '环边框辉光', expanded: true });
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'visible', { label: '显示边框' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'color', { label: '边框颜色' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'opacity', { min: 0, max: 1.5, step: 0.01, label: '边框透明度' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'lineWidth', { min: 0.2, max: 8, step: 0.1, label: '边框线宽' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomEnabled', { label: '启用辉光' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomStrength', { min: 0, max: 8, step: 0.01, label: '辉光强度' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomRadius', { min: 0, max: 24, step: 0.1, label: '辉光半径' }).on('change', applyEarthDebug);
+    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomTint', { label: '辉光颜色' }).on('change', applyEarthDebug);
 
     const earthGlobe = earthFolder.addFolder({ title: '地球材质', expanded: false });
     earthGlobe.addBinding(earthDebug.globe, 'bumpScale', { min: 0, max: 0.08, step: 0.0005, label: '凹凸强度' }).on('change', applyEarthDebug);

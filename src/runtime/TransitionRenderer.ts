@@ -45,7 +45,7 @@ function createRenderTarget(width: number, height: number): THREE.WebGLRenderTar
   const target = new THREE.WebGLRenderTarget(width, height, {
     depthBuffer: true,
     stencilBuffer: false,
-    samples: 0, // 暂时不开启多重采样，后处理会降低性能
+    samples: 4,
   });
   target.texture.colorSpace = THREE.SRGBColorSpace;
   target.texture.generateMipmaps = false; // 渲染目标通常不需要 Mipmaps
