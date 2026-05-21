@@ -1,31 +1,76 @@
 import * as THREE from 'three';
 import { ModelScene } from './ModelScene';
-import type { SceneBase, SceneScrollState } from './SceneBase';
+import type { SceneBase, ScenePostEffects, SceneScrollState } from './SceneBase';
 import { createProceduralEarth } from './earth/createEarthModel';
 import {
   DEFAULT_EARTH_TIMELINE_CONFIG,
   getEarthTimeline,
   type EarthTimeline,
 } from './earth/earthTimeline';
-import { moveBoxCenterTo, normalizeText, setMaterial } from './earth/earthSceneUtils';
+import { moveBoxCenterTo, normalizeText } from './earth/earthSceneUtils';
 import { loadGLTF } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
+const EARTH_TEXT_BLOOM_LAYER = 10;
+const EARTH_BOTTOM_ROOT = '/textures/earth/bottom';
+const EARTH_BOTTOM_LAYERS = [
+  { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%881%E4%B8%8D%E5%8A%A8.png`, speed: 0 },
+  { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%882%E9%A1%BA.png`, speed: 0.08 },
+  { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%883%E9%A1%BA.png`, speed: 0.045 },
+  { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%884%E9%80%86.png`, speed: -0.06 },
+  { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%885%E9%A1%BA.png`, speed: 0.11 },
+] as const;
+const STAGE_RING_Y_OFFSET_START = -0.16;
+const STAGE_RING_Y_OFFSET_END = 0;
+const STAGE_TEXT_Y_OFFSET_START = -0.1;
+const STAGE_TEXT_Y_OFFSET_END = 0;
+const STAGE_RING_SCALE_START = 0.9;
+const STAGE_RING_SCALE_END = 1;
+const STAGE_TEXT_SCALE_START = 0.96;
+const STAGE_TEXT_SCALE_END = 1;
+const ROOT_INTRO_ROT_Y_START = -0.22;
+const ROOT_INTRO_ROT_Y_END = 0.08;
 
 /** 鍒涘缓瑁呴グ鐜殑鏉愯川锛氫娇鐢?PhysicalMaterial 妯℃嫙閫忔槑鍙戝厜璐ㄦ劅 */
-function createRingMaterial() {
-  return new THREE.MeshPhysicalMaterial({
-    color: '#d8fbff',
-    emissive: '#8ff8ff',
-    emissiveIntensity: 0.26,
-    transmission: 0.7, // 寮€鍚€忓厜鎬?
-    thickness: 0.08,
+function createRingUiMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color: '#acd0e8',
+    emissive: '#000000',
+    emissiveIntensity: 0.23,
     transparent: true,
-    opacity: 0.14,
-    roughness: 0.08,
+    opacity: 0.4,
+    roughness: 0,
     metalness: 0,
     side: THREE.DoubleSide,
-    depthWrite: false, // 鍏抽棴娣卞害鍐欏叆锛岄槻姝㈠崐閫忔槑閬尅鍐茬獊
+    depthWrite: false,
+    toneMapped: false,
+  });
+}
+
+function isRingTopFace(obj: THREE.Object3D) {
+  let current: THREE.Object3D | null = obj;
+  while (current) {
+    if (/^face(?:[1-9]|10)$/.test(current.name)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function setRingSurfaceMaterials(
+  root: THREE.Object3D,
+  topMaterial: THREE.Material,
+  sideMaterial: THREE.Material,
+) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+
+    const oldMaterial = mesh.material;
+    mesh.material = isRingTopFace(mesh) ? topMaterial : sideMaterial;
+    mesh.frustumCulled = false;
+
+    if (Array.isArray(oldMaterial)) oldMaterial.forEach((mat) => mat.dispose());
+    else oldMaterial?.dispose?.();
   });
 }
 
@@ -76,19 +121,46 @@ function assignDebugData<T extends Record<string, unknown>>(target: T, source: T
 }
 
 export interface EarthDebugStageState {
-  forceRingVisible: boolean;
-  forceTextVisible: boolean;
-  ringYOffsetStart: number;
-  ringYOffsetEnd: number;
-  textYOffsetStart: number;
-  textYOffsetEnd: number;
-  ringScaleStart: number;
-  ringScaleEnd: number;
-  textScaleStart: number;
-  textScaleEnd: number;
-  textOpacityMax: number;
-  ringOpacityBase: number;
-  ringEmissiveBase: number;
+  textBloomEnabled: boolean;
+  textBloomStrength: number;
+  textBloomRadius: number;
+  textBloomTint: string;
+}
+
+export interface EarthDebugMaterialState {
+  textColor: string;
+  textOpacity: number;
+  ringColor: string;
+  ringOpacity: number;
+  ringEmissiveColor: string;
+  ringEmissiveIntensity: number;
+  sideColor: string;
+  sideOpacity: number;
+  sideEmissiveColor: string;
+  sideEmissiveIntensity: number;
+}
+
+export interface EarthDebugSingleMotionState {
+  autoRotateEnabled: boolean;
+  autoRotateSpeed: number;
+  initialRotationY: number;
+}
+
+export interface EarthDebugMotionState {
+  ring: EarthDebugSingleMotionState;
+  earth: EarthDebugSingleMotionState;
+}
+
+export interface EarthDebugBottomHudState {
+  visible: boolean;
+  opacity: number;
+  color: string;
+  brightness: number;
+  scale: number;
+  tiltDeg: number;
+  positionY: number;
+  positionZ: number;
+  speed: number;
 }
 
 export interface EarthDebugGlobeState {
@@ -142,6 +214,9 @@ export interface EarthDebugLightState {
 
 export interface EarthDebugData {
   stage: EarthDebugStageState;
+  materials: EarthDebugMaterialState;
+  motion: EarthDebugMotionState;
+  bottomHud: EarthDebugBottomHudState;
   globe: EarthDebugGlobeState;
   atmosphere: EarthDebugAtmosphereState;
   lights: EarthDebugLightState;
@@ -176,6 +251,39 @@ function createFallbackScrollState(): SceneScrollState {
   };
 }
 
+function createBottomHud(textures: THREE.Texture[]) {
+  const group = new THREE.Group();
+  group.name = 'earth-bottom-hud';
+
+  textures.forEach((texture, index) => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      color: '#d8f5ff',
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(4.35, 4.35), material);
+    plane.name = `earth-bottom-hud-plane-${index + 1}`;
+    plane.renderOrder = 10 + index;
+
+    const pivot = new THREE.Group();
+    pivot.name = `earth-bottom-hud-pivot-${index + 1}`;
+    pivot.add(plane);
+    group.add(pivot);
+  });
+
+  group.rotation.x = THREE.MathUtils.degToRad(-64);
+  group.position.set(0, -0.66, 0.06);
+  return group;
+}
+
 /**
  * createEarthScene: 鏋勫缓鍦扮悆鍦烘櫙鐨勬牳蹇冩柟娉曘€?
  * 
@@ -188,17 +296,17 @@ export async function createEarthScene() {
   const scene = new ModelScene({
     name: 'earth',
     fov: 31,
-    cameraPosition: [0, 0.35, 4.25],
+    cameraPosition: [0, 0.35, 4.05],
     cameraLookAt: [0, 0.02, 0],
     autoRotateSpeed: 0.045,
   });
 
   // 1. 骞跺彂鍔犺浇鎵€鏈夎祫婧?
-  const [earth, ring, ringOutline, text] = await Promise.all([
+  const [earth, ring, text, bottomHudTextures] = await Promise.all([
     createProceduralEarth(), // 绋嬪簭鍖栫敓鎴愮殑鍦扮悆锛堝寘鍚珮绾?Shader 鏉愯川锛?
-    loadGLTF(`${EARTH_MODEL_ROOT}/huan.gltf`),
-    loadGLTF(`${EARTH_MODEL_ROOT}/ringOutLine.gltf`),
+    loadGLTF(`${EARTH_MODEL_ROOT}/huan2.glb`),
     loadGLTF(`${EARTH_MODEL_ROOT}/wenzi.gltf`),
+    Promise.all(EARTH_BOTTOM_LAYERS.map((layer) => new THREE.TextureLoader().loadAsync(layer.path))),
   ]);
 
   // 2. 鐏厜璋冩暣锛氱Щ闄ら粯璁ゅ厜鐓э紝娣诲姞鏍规嵁鍦扮悆澶槼鏂瑰悜鍚屾鐨勫钩琛屽厜
@@ -228,12 +336,13 @@ export async function createEarthScene() {
   scene.scene.add(sun);
 
   // 3. 鏉愯川涓庝綅缃垵濮嬪寲
-  const ringMaterial = createRingMaterial();
-  setMaterial(ring.scene, ringMaterial);
-  setMaterial(ringOutline.scene, ringMaterial);
+  const ringMaterial = createRingUiMaterial();
+  const ringSideMaterial = createRingUiMaterial();
+  setRingSurfaceMaterials(ring.scene, ringMaterial, ringSideMaterial);
   const ringGroup = new THREE.Group();
   ringGroup.name = 'earth-ring-group';
-  ringGroup.add(ring.scene, ringOutline.scene);
+  ringGroup.add(ring.scene);
+  text.scene.traverse((obj) => obj.layers.enable(EARTH_TEXT_BLOOM_LAYER));
   const textMaterials = normalizeText(text.scene); // 鑷姩鎻愬彇骞舵爣鍑嗗寲鏂囧瓧鏉愯川
 
   earth.group.scale.setScalar(1.2);
@@ -255,6 +364,8 @@ export async function createEarthScene() {
   root.name = 'earth-model-root';
   root.add(earth.group, earthUiGroup);
   scene.attachAndFit(root, 3.0);
+  const bottomHud = createBottomHud(bottomHudTextures);
+  scene.scene.add(bottomHud);
 
   // 璁板綍鍒濆鐘舵€侊紝鐢ㄤ簬鍚庣画鎻掑€?
   scene.modelRoot.position.y = -0.07;
@@ -294,27 +405,51 @@ export async function createEarthScene() {
     scaleEnd: 1,
     modelRotXStart: 0.32,
     modelRotXEnd: baseModelRotationX,
-    rootRotYStart: -0.22,
-    rootRotYEnd: 0.08,
-    autoRotateEnabled: true,
-    autoRotateSpeed: scene.getAutoRotateSpeed(),
+    rootRotYStart: ROOT_INTRO_ROT_Y_START,
+    rootRotYEnd: ROOT_INTRO_ROT_Y_END,
   };
 
   const debugData: EarthDebugData = {
     stage: {
-      forceRingVisible: false,
-      forceTextVisible: false,
-      ringYOffsetStart: -0.16,
-      ringYOffsetEnd: 0,
-      textYOffsetStart: -0.1,
-      textYOffsetEnd: 0,
-      ringScaleStart: 0.9,
-      ringScaleEnd: 1,
-      textScaleStart: 0.96,
-      textScaleEnd: 1,
-      textOpacityMax: 0.92,
-      ringOpacityBase: 0.14,
-      ringEmissiveBase: 0.26,
+      textBloomEnabled: false,
+      textBloomStrength: 1.45,
+      textBloomRadius: 6.5,
+      textBloomTint: '#bfefff',
+    },
+    materials: {
+      textColor: '#ffffff',
+      textOpacity: 0.92,
+      ringColor: '#acd0e8',
+      ringOpacity: 0.4,
+      ringEmissiveColor: '#000000',
+      ringEmissiveIntensity: 0.23,
+      sideColor: '#5c697f',
+      sideOpacity: 0.08,
+      sideEmissiveColor: '#3aa9c4',
+      sideEmissiveIntensity: 0,
+    },
+    motion: {
+      ring: {
+        autoRotateEnabled: true,
+        autoRotateSpeed: -0.25,
+        initialRotationY: 0.068,
+      },
+      earth: {
+        autoRotateEnabled: true,
+        autoRotateSpeed: 0.25,
+        initialRotationY: -1.229,
+      },
+    },
+    bottomHud: {
+      visible: true,
+      opacity: 1,
+      color: '#d8f5ff',
+      brightness: 4,
+      scale: 1.9,
+      tiltDeg: -78.4,
+      positionY: -1.67,
+      positionZ: -5,
+      speed: 4,
     },
     globe: {
       bumpScale: earth.globeMaterial.bumpScale,
@@ -358,6 +493,68 @@ export async function createEarthScene() {
     },
   };
   const defaultDebugData = cloneDebugData(debugData);
+  let ringRotationY = debugData.motion.ring.initialRotationY;
+  let earthRotationY = debugData.motion.earth.initialRotationY;
+  let appliedRingInitialRotationY = debugData.motion.ring.initialRotationY;
+  let appliedEarthInitialRotationY = debugData.motion.earth.initialRotationY;
+
+  function applyMaterialDebugSettings() {
+    ringMaterial.color.set(debugData.materials.ringColor);
+    ringMaterial.opacity = debugData.materials.ringOpacity;
+    ringMaterial.emissive.set(debugData.materials.ringEmissiveColor);
+    ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity;
+    ringMaterial.needsUpdate = true;
+
+    ringSideMaterial.color.set(debugData.materials.sideColor);
+    ringSideMaterial.opacity = debugData.materials.sideOpacity;
+    ringSideMaterial.emissive.set(debugData.materials.sideEmissiveColor);
+    ringSideMaterial.emissiveIntensity = debugData.materials.sideEmissiveIntensity;
+    ringSideMaterial.needsUpdate = true;
+
+    for (const material of textMaterials) {
+      material.color.set(debugData.materials.textColor);
+    }
+  }
+
+  function applyMotionDebugSettings() {
+    const ringInitialDelta = debugData.motion.ring.initialRotationY - appliedRingInitialRotationY;
+    if (Math.abs(ringInitialDelta) > 0.000001) {
+      ringRotationY += ringInitialDelta;
+      appliedRingInitialRotationY = debugData.motion.ring.initialRotationY;
+    }
+
+    const earthInitialDelta = debugData.motion.earth.initialRotationY - appliedEarthInitialRotationY;
+    if (Math.abs(earthInitialDelta) > 0.000001) {
+      earthRotationY += earthInitialDelta;
+      appliedEarthInitialRotationY = debugData.motion.earth.initialRotationY;
+    }
+  }
+
+  function applyBottomHudDebugSettings() {
+    bottomHud.visible = debugData.bottomHud.visible;
+    bottomHud.scale.setScalar(debugData.bottomHud.scale);
+    bottomHud.rotation.x = THREE.MathUtils.degToRad(debugData.bottomHud.tiltDeg);
+    bottomHud.position.y = debugData.bottomHud.positionY;
+    bottomHud.position.z = debugData.bottomHud.positionZ;
+
+    bottomHud.traverse((obj) => {
+      const material = (obj as THREE.Mesh).material;
+      if (!material) return;
+      if (Array.isArray(material)) {
+        material.forEach((mat) => {
+          if ('opacity' in mat) mat.opacity = debugData.bottomHud.opacity;
+          if ('color' in mat && mat.color instanceof THREE.Color) {
+            mat.color.set(debugData.bottomHud.color).multiplyScalar(debugData.bottomHud.brightness);
+          }
+        });
+      } else if ('opacity' in material) {
+        material.opacity = debugData.bottomHud.opacity;
+        if ('color' in material && material.color instanceof THREE.Color) {
+          material.color.set(debugData.bottomHud.color).multiplyScalar(debugData.bottomHud.brightness);
+        }
+      }
+    });
+  }
 
   function applyGlobeDebugSettings() {
     earth.globeMaterial.bumpScale = debugData.globe.bumpScale;
@@ -433,33 +630,38 @@ export async function createEarthScene() {
     scene.modelRoot.rotation.x = THREE.MathUtils.lerp(motionTimeline.modelRotXStart, motionTimeline.modelRotXEnd, pullBack);
     root.rotation.y = THREE.MathUtils.lerp(motionTimeline.rootRotYStart, motionTimeline.rootRotYEnd, pullBack);
 
-    earth.group.rotation.y = scrollSpin;
-    scene.setAutoRotateSpeed(motionTimeline.autoRotateSpeed);
+    earth.group.rotation.y = scrollSpin + earthRotationY;
+    earthUiGroup.rotation.y = ringRotationY;
     // 褰撴粴鍔ㄥ仠姝㈠湪鐗瑰畾鍖哄煙鏃讹紝寮€鍚嚜鍔ㄦ棆杞?
-    scene.setAutoRotate(motionTimeline.autoRotateEnabled && spinComplete);
+    scene.setAutoRotate(false);
   };
 
   /** 鑸炲彴瑁呴グ鏃堕棿绾匡細澶勭悊鍦嗙幆鍜屾枃瀛楃殑鍑虹幇鍔ㄧ敾 */
   const applyStageTimeline = ({ staging, textReveal, focus }: EarthTimeline) => {
     // 鏍规嵁杩涘害鍐冲畾鏄鹃殣锛屽噺灏戜笉蹇呰鐨?GPU 缁樺埗
-    ringGroup.visible = debugData.stage.forceRingVisible || (staging > 0.001 && focus > 0.001);
-    text.scene.visible = debugData.stage.forceTextVisible || (textReveal > 0.001 && focus > 0.001);
+    ringGroup.visible = staging > 0.001 && focus > 0.001;
+    text.scene.visible = textReveal > 0.001 && focus > 0.001;
 
-    ringGroup.position.y = baseRingPosition.y + THREE.MathUtils.lerp(debugData.stage.ringYOffsetStart, debugData.stage.ringYOffsetEnd, staging);
-    text.scene.position.y = baseTextPosition.y + THREE.MathUtils.lerp(debugData.stage.textYOffsetStart, debugData.stage.textYOffsetEnd, textReveal);
-    ringGroup.scale.setScalar(baseRingScale * THREE.MathUtils.lerp(debugData.stage.ringScaleStart, debugData.stage.ringScaleEnd, staging));
-    text.scene.scale.setScalar(baseTextScale * THREE.MathUtils.lerp(debugData.stage.textScaleStart, debugData.stage.textScaleEnd, textReveal));
+    ringGroup.position.y = baseRingPosition.y + THREE.MathUtils.lerp(STAGE_RING_Y_OFFSET_START, STAGE_RING_Y_OFFSET_END, staging);
+    text.scene.position.y = baseTextPosition.y + THREE.MathUtils.lerp(STAGE_TEXT_Y_OFFSET_START, STAGE_TEXT_Y_OFFSET_END, textReveal);
+    ringGroup.scale.setScalar(baseRingScale * THREE.MathUtils.lerp(STAGE_RING_SCALE_START, STAGE_RING_SCALE_END, staging));
+    text.scene.scale.setScalar(baseTextScale * THREE.MathUtils.lerp(STAGE_TEXT_SCALE_START, STAGE_TEXT_SCALE_END, textReveal));
 
     // 鍔ㄦ€佽皟鏁存潗璐ㄥ弬鏁帮細缁撳悎 staging 鍜?focus锛堣浆鍦烘贩鍚堝害锛?
-    ringMaterial.opacity = debugData.stage.ringOpacityBase * staging * focus;
-    ringMaterial.emissiveIntensity = debugData.stage.ringEmissiveBase * THREE.MathUtils.lerp(0.35, 1, staging);
+    ringMaterial.opacity = debugData.materials.ringOpacity * staging * focus;
+    ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
+    ringSideMaterial.opacity = debugData.materials.sideOpacity * staging * focus;
+    ringSideMaterial.emissiveIntensity = debugData.materials.sideEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
 
     for (const material of textMaterials) {
-      material.opacity = debugData.stage.textOpacityMax * textReveal * focus;
+      material.opacity = debugData.materials.textOpacity * textReveal * focus;
     }
   };
 
   function applyResolvedState(sourceState: SceneScrollState) {
+    applyMaterialDebugSettings();
+    applyMotionDebugSettings();
+    applyBottomHudDebugSettings();
     applyGlobeDebugSettings();
     applyAtmosphereDebugSettings();
     applyLightDebugSettings();
@@ -483,12 +685,41 @@ export async function createEarthScene() {
     applyResolvedState(state);
   };
 
-  const earthScene = scene as ModelScene & EarthSceneDebugControls;
+  const baseUpdate = scene.update.bind(scene);
+  scene.update = (delta: number, elapsed: number) => {
+    baseUpdate(delta, elapsed);
+    if (debugData.motion.ring.autoRotateEnabled) {
+      ringRotationY += delta * debugData.motion.ring.autoRotateSpeed;
+    }
+    if (debugData.motion.earth.autoRotateEnabled) {
+      earthRotationY += delta * debugData.motion.earth.autoRotateSpeed;
+    }
+    bottomHud.children.forEach((pivot, index) => {
+      const layer = EARTH_BOTTOM_LAYERS[index];
+      if (!layer) return;
+      pivot.rotation.z += delta * layer.speed * debugData.bottomHud.speed;
+    });
+  };
+
+  const getPostEffects = (): ScenePostEffects => ({
+    bloom: {
+      enabled: debugData.stage.textBloomEnabled && text.scene.visible,
+      layer: EARTH_TEXT_BLOOM_LAYER,
+      strength: debugData.stage.textBloomStrength,
+      radius: debugData.stage.textBloomRadius,
+      tint: debugData.stage.textBloomTint,
+      resolutionScale: 0.5,
+    },
+  });
+
+  const earthScene = scene as ModelScene & EarthSceneDebugControls & { getPostEffects(): ScenePostEffects };
+  earthScene.getPostEffects = getPostEffects;
   earthScene.getEarthDebugData = () => debugData;
   earthScene.applyEarthDebug = () => {
     applyResolvedState(lastSourceState ?? createFallbackScrollState());
   };
   earthScene.resetEarthDebug = () => {
+    //@ts-ignore
     assignDebugData(debugData, cloneDebugData(defaultDebugData));
     applyResolvedState(lastSourceState ?? createFallbackScrollState());
   };

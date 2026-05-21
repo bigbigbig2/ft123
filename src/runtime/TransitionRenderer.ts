@@ -3,6 +3,7 @@ import compositeVert from '../shaders/composite.vert.glsl?raw';
 import compositeFrag from '../shaders/composite.frag.glsl?raw';
 import type { EngineView } from '../core/Engine';
 import type { SceneBase } from '../scenes/SceneBase';
+import { ScenePostProcessor } from '../render/ScenePostProcessor';
 
 /**
  * 渲染层接口：定义了一个可以被 TransitionRenderer 渲染的图层
@@ -76,6 +77,7 @@ export class TransitionRenderer implements EngineView {
   private renderTargetBackdrop: THREE.WebGLRenderTarget;
   private renderTargetA: THREE.WebGLRenderTarget;
   private renderTargetB: THREE.WebGLRenderTarget;
+  private scenePostProcessor = new ScenePostProcessor();
 
   private backdrop: RenderLayer | null;
   private sceneA: SceneBase | null = null;
@@ -161,6 +163,7 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetBackdrop.setSize(rw, rh);
     this.renderTargetA.setSize(rw, rh);
     this.renderTargetB.setSize(rw, rh);
+    this.scenePostProcessor.setSize(rw, rh);
     this.compositeMaterial.uniforms.uResolution.value.set(rw, rh);
     this.backdrop?.setSize?.(rw, rh);
   }
@@ -287,6 +290,7 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetBackdrop.dispose();
     this.renderTargetA.dispose();
     this.renderTargetB.dispose();
+    this.scenePostProcessor.dispose();
     this.compositeQuad.geometry.dispose();
     this.compositeMaterial.dispose();
     this.backdrop?.dispose?.();
@@ -318,5 +322,6 @@ export class TransitionRenderer implements EngineView {
     renderer.setClearColor(0x000000, 0); // 前景必须透明，以便合成
     renderer.clear(true, true, true);
     renderer.render(layer.scene, layer.camera);
+    this.scenePostProcessor.renderSceneEffects(renderer, layer as SceneBase, target);
   }
 }
