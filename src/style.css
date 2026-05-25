@@ -140,20 +140,20 @@ body::-webkit-scrollbar {
 }
 
 .earth-overlay__char {
-  --char-progress: 0;
+  --char-opacity: 0;
+  --char-scale: 0.5;
+  --char-y: 12px;
+  --char-blur: 1px;
+  --char-glow-size: 0px;
+  --char-glow-alpha: 0;
   display: inline-block;
-  opacity: var(--char-progress);
-  transform:
-    translate3d(
-      calc((1 - var(--char-progress)) * -14px),
-      calc((1 - var(--char-progress)) * 8px),
-      0
-    )
-    scale(calc(0.92 + var(--char-progress) * 0.08));
-  filter: blur(calc((1 - var(--char-progress)) * 5px));
+  opacity: var(--char-opacity);
+  transform: translate3d(0, var(--char-y), 0) scale(var(--char-scale));
+  filter: blur(var(--char-blur));
   text-shadow:
-    0 0 calc(6px + var(--char-progress) * 10px) rgba(255, 255, 255, 0.5),
-    calc((1 - var(--char-progress)) * -10px) 0 14px rgba(151, 210, 255, 0.32);
+    0 0 var(--char-glow-size) rgba(255, 255, 255, var(--char-glow-alpha)),
+    0 0 calc(var(--char-glow-size) * 1.8) rgba(151, 210, 255, calc(var(--char-glow-alpha) * 0.46));
+  transform-origin: 50% 72%;
   will-change: opacity, transform, filter;
 }
 

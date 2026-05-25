@@ -298,8 +298,8 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     .on('change', (event) => opts.transition.setSceneBRevealStart(event.value));
 
   const backdropParams = {
-    color1: '#aebdcd',
-    color2: '#edf4f8',
+    color1: '#a3b0cf',
+    color2: '#7c8699',
     dotStrength: 1,
     blueNoiseStrength: 0.018,
     centerGlowStrength: 0.5,
