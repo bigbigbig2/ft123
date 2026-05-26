@@ -177,6 +177,21 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     ringMotion.addBinding(earthDebug.uiTransform, 'offsetZ', { min: -1, max: 1, step: 0.001, label: '整体偏移 Z' }).on('change', applyEarthDebug);
     ringMotion.addBinding(earthDebug.uiTransform, 'scale', { min: 0.2, max: 2, step: 0.001, label: '整体缩放' }).on('change', applyEarthDebug);
 
+    const earthRingLayers = earthFolder.addFolder({ title: '环分层旋转', expanded: false });
+    earthRingLayers.addBinding(earthDebug.motion.ringLayers, 'enabled', { label: '启用分层' }).on('change', applyEarthDebug);
+    const addRingLayerBindings = (
+      title: string,
+      layer: typeof earthDebug.motion.ringLayers.inner,
+    ) => {
+      const folder = earthRingLayers.addFolder({ title, expanded: false });
+      folder.addBinding(layer, 'autoRotateEnabled', { label: '自动旋转' }).on('change', applyEarthDebug);
+      folder.addBinding(layer, 'autoRotateSpeed', { min: -0.5, max: 0.5, step: 0.001, label: '相对速度' }).on('change', applyEarthDebug);
+      folder.addBinding(layer, 'initialRotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '相位 Y' }).on('change', applyEarthDebug);
+    };
+    addRingLayerBindings('内环', earthDebug.motion.ringLayers.inner);
+    addRingLayerBindings('中环', earthDebug.motion.ringLayers.middle);
+    addRingLayerBindings('外环', earthDebug.motion.ringLayers.outer);
+
     const earthMotion = earthFolder.addFolder({ title: '地球运动', expanded: false });
     earthMotion.addBinding(earthDebug.motion.earth, 'autoRotateEnabled', { label: '自动旋转' }).on('change', applyEarthDebug);
     earthMotion.addBinding(earthDebug.motion.earth, 'autoRotateSpeed', { min: -0.4, max: 0.4, step: 0.001, label: '旋转速度' }).on('change', applyEarthDebug);
@@ -226,6 +241,11 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthGlobe.addBinding(earthDebug.globe, 'cloudOpacity', { min: 0, max: 1.5, step: 0.001, label: '云层透明度' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudBrightness', { min: 0.5, max: 1.8, step: 0.01, label: '云层亮度' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudColor', { label: '云层颜色' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudMotionEnabled', { label: '云场动画' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudFlowSpeed', { min: 0, max: 0.08, step: 0.001, label: '云流速' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudWarpStrength', { min: 0, max: 0.08, step: 0.001, label: '内部扰动' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudDetailStrength', { min: 0, max: 1, step: 0.01, label: '细节流动' }).on('change', applyEarthDebug);
+    earthGlobe.addBinding(earthDebug.globe, 'cloudEdgeMotion', { min: 0, max: 1, step: 0.01, label: '边缘变化' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'oceanRoughness', { min: 0, max: 1, step: 0.001, label: '海面粗糙度' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'landRoughness', { min: 0, max: 1, step: 0.001, label: '陆地粗糙度' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'cloudRoughness', { min: 0, max: 1, step: 0.001, label: '云层粗糙度' }).on('change', applyEarthDebug);
@@ -275,12 +295,44 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     scene3Materials.addBinding(scene3Debug.materials, 'bodyMetalness', { min: 0, max: 1, step: 0.01, label: '主体金属度' }).on('change', applyScene3Debug);
     scene3Materials.addBinding(scene3Debug.materials, 'bodyRoughness', { min: 0, max: 1, step: 0.01, label: '主体粗糙度' }).on('change', applyScene3Debug);
 
+    const scene3Lighting = scene3Folder.addFolder({ title: '环境光照', expanded: false });
+    scene3Lighting.addBinding(scene3Debug.lighting, 'environmentIntensity', { min: 0, max: 3, step: 0.01, label: '环境反射' }).on('change', applyScene3Debug);
+    scene3Lighting.addBinding(scene3Debug.lighting, 'ambientIntensity', { min: 0, max: 1.5, step: 0.01, label: '环境光' }).on('change', applyScene3Debug);
+    scene3Lighting.addBinding(scene3Debug.lighting, 'keyIntensity', { min: 0, max: 5, step: 0.01, label: '主光' }).on('change', applyScene3Debug);
+    scene3Lighting.addBinding(scene3Debug.lighting, 'fillIntensity', { min: 0, max: 3, step: 0.01, label: '补光' }).on('change', applyScene3Debug);
+    scene3Lighting.addBinding(scene3Debug.lighting, 'rimIntensity', { min: 0, max: 5, step: 0.01, label: '轮廓光' }).on('change', applyScene3Debug);
+    scene3Lighting.addBinding(scene3Debug.lighting, 'shadowsEnabled', { label: '阴影' }).on('change', applyScene3Debug);
+
     const scene3Stage = scene3Folder.addFolder({ title: '整体位置', expanded: false });
     scene3Stage.addBinding(scene3Debug.stage, 'positionX', { min: -3, max: 3, step: 0.01, label: '位置 X' }).on('change', applyScene3Debug);
     scene3Stage.addBinding(scene3Debug.stage, 'positionY', { min: -1, max: 3, step: 0.01, label: '位置 Y' }).on('change', applyScene3Debug);
     scene3Stage.addBinding(scene3Debug.stage, 'positionZ', { min: -3, max: 3, step: 0.01, label: '位置 Z' }).on('change', applyScene3Debug);
     scene3Stage.addBinding(scene3Debug.stage, 'rotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '旋转 Y' }).on('change', applyScene3Debug);
     scene3Stage.addBinding(scene3Debug.stage, 'scale', { min: 0.2, max: 2, step: 0.01, label: '缩放' }).on('change', applyScene3Debug);
+
+    const scene3Bounds = scene3Folder.addFolder({ title: '包围盒', expanded: true });
+    scene3Bounds.addBinding(scene3Debug.bounds, 'visible', { label: '显示包围盒' }).on('change', applyScene3Debug);
+    scene3Bounds.addBinding(scene3Debug.bounds, 'color', { label: '颜色' }).on('change', applyScene3Debug);
+    scene3Bounds.addBinding(scene3Debug.bounds, 'opacity', { min: 0, max: 1, step: 0.01, label: '透明度' }).on('change', applyScene3Debug);
+
+    const scene3VideoCards = scene3Folder.addFolder({ title: '视频卡片', expanded: true });
+    const addVideoCardBindings = (
+      title: string,
+      card: typeof scene3Debug.videoCards.left,
+    ) => {
+      const folder = scene3VideoCards.addFolder({ title, expanded: false });
+      folder.addBinding(card, 'visible', { label: '显示' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'opacity', { min: 0, max: 1, step: 0.01, label: '透明度' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'offsetX', { min: -50, max: 50, step: 0.1, label: '偏移 X' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'offsetY', { min: -50, max: 50, step: 0.1, label: '偏移 Y' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'offsetZ', { min: -50, max: 50, step: 0.1, label: '偏移 Z' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'rotationXDeg', { min: -90, max: 90, step: 1, label: '旋转 X' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'rotationYDeg', { min: -180, max: 180, step: 1, label: '旋转 Y' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'rotationZDeg', { min: -90, max: 90, step: 1, label: '旋转 Z' }).on('change', applyScene3Debug);
+      folder.addBinding(card, 'scale', { min: 0.1, max: 2, step: 0.01, label: '缩放' }).on('change', applyScene3Debug);
+    };
+    addVideoCardBindings('左卡片', scene3Debug.videoCards.left);
+    addVideoCardBindings('右卡片', scene3Debug.videoCards.right);
 
     const scene3Drone = scene3Folder.addFolder({ title: '无人机整体', expanded: false });
     scene3Drone.addBinding(scene3Debug.drone, 'scale', { min: 0.1, max: 5, step: 0.01, label: '缩放' }).on('change', applyScene3Debug);

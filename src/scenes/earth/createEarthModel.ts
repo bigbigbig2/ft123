@@ -67,6 +67,12 @@ export interface ProceduralEarthModel {
     uCloudOpacity: { value: number };
     uCloudBrightness: { value: number };
     uCloudColor: { value: THREE.Color };
+    uCloudTime: { value: number };
+    uCloudMotionEnabled: { value: number };
+    uCloudFlowSpeed: { value: number };
+    uCloudWarpStrength: { value: number };
+    uCloudDetailStrength: { value: number };
+    uCloudEdgeMotion: { value: number };
     tNight: { value: THREE.Texture };
     uNightIntensity: { value: number };
     uNightFadeStart: { value: number };
@@ -106,6 +112,12 @@ function createCloudMaterial(
       uCloudOpacity: materialUniforms.uCloudOpacity,
       uCloudBrightness: materialUniforms.uCloudBrightness,
       uCloudColor: materialUniforms.uCloudColor,
+      uCloudTime: materialUniforms.uCloudTime,
+      uCloudMotionEnabled: materialUniforms.uCloudMotionEnabled,
+      uCloudFlowSpeed: materialUniforms.uCloudFlowSpeed,
+      uCloudWarpStrength: materialUniforms.uCloudWarpStrength,
+      uCloudDetailStrength: materialUniforms.uCloudDetailStrength,
+      uCloudEdgeMotion: materialUniforms.uCloudEdgeMotion,
     });
 
     shader.fragmentShader = shader.fragmentShader.replace(
@@ -117,14 +129,45 @@ function createCloudMaterial(
       uniform float uCloudOpacity;
       uniform float uCloudBrightness;
       uniform vec3 uCloudColor;
+
+      uniform float uCloudTime;
+      uniform float uCloudMotionEnabled;
+      uniform float uCloudFlowSpeed;
+      uniform float uCloudWarpStrength;
+      uniform float uCloudDetailStrength;
+      uniform float uCloudEdgeMotion;
+
+      vec2 cloudSampleUv(vec2 uv) {
+        return vec2(fract(uv.x), clamp(uv.y, 0.001, 0.999));
+      }
       `,
     ).replace(
       '#include <map_fragment>',
       `
       #ifdef USE_MAP
         vec4 sampledCloud = texture2D(map, vMapUv);
-        float cloudMask = smoothstep(uCloudLow, uCloudHigh, sampledCloud.r);
-        diffuseColor.rgb = mix(uCloudColor * 0.72, uCloudColor * uCloudBrightness, sampledCloud.r);
+        float motion = step(0.5, uCloudMotionEnabled);
+        float flowTime = uCloudTime * uCloudFlowSpeed * motion;
+        float warp = uCloudWarpStrength * motion;
+
+        vec2 flowUvA = cloudSampleUv(vec2(
+          vMapUv.x + flowTime * 0.35 + sin(vMapUv.y * 18.0 + flowTime * 5.0) * warp * 0.42,
+          vMapUv.y + cos(vMapUv.x * 13.0 - flowTime * 4.0) * warp * 0.18
+        ));
+        vec2 flowUvB = cloudSampleUv(vec2(
+          vMapUv.x - flowTime * 0.22 + sampledCloud.r * warp * 0.48,
+          vMapUv.y + flowTime * 0.035 + sin((vMapUv.x + vMapUv.y) * 16.0 + flowTime * 6.0) * warp * 0.24
+        ));
+
+        float cloudFlowA = texture2D(map, flowUvA).r;
+        float cloudFlowB = texture2D(map, flowUvB).r;
+        float movingDetail = mix(cloudFlowA, cloudFlowB, 0.45);
+        float edgeDetail = abs(cloudFlowA - cloudFlowB);
+        float animatedCloud = mix(sampledCloud.r, movingDetail, uCloudDetailStrength * motion);
+        float animatedLow = uCloudLow + (movingDetail - 0.5) * uCloudEdgeMotion * 0.18 * motion;
+        float cloudMask = smoothstep(animatedLow, uCloudHigh, animatedCloud + edgeDetail * uCloudEdgeMotion * motion);
+
+        diffuseColor.rgb = mix(uCloudColor * 0.72, uCloudColor * uCloudBrightness, animatedCloud);
         diffuseColor.a = cloudMask * uCloudOpacity;
       #endif
       `,
@@ -176,6 +219,12 @@ function createGlobeMaterial(
     uCloudOpacity: { value: 0.799 },
     uCloudBrightness: { value: 1.33 },
     uCloudColor: { value: new THREE.Color('#ebebeb') },
+    uCloudTime: { value: 0 },
+    uCloudMotionEnabled: { value: 1 },
+    uCloudFlowSpeed: { value: 0.018 },
+    uCloudWarpStrength: { value: 0.018 },
+    uCloudDetailStrength: { value: 0.28 },
+    uCloudEdgeMotion: { value: 0.12 },
     tNight: { value: nightTexture },
     uNightIntensity: { value: 3.91 },
     uNightFadeStart: { value: 0.0 },
