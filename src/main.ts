@@ -10,7 +10,8 @@ import { TimelineDirector } from './scroll/TimelineDirector';
 import { EarthOverlay, getEarthMistStrength } from './ui/EarthOverlay';
 import { VideoScene } from './scenes/VideoScene';
 import { createEarthScene } from './scenes/EarthScene';
-import { createScene1, createScene2 } from './scenes/placeholders';
+import { createScene2 } from './scenes/placeholders';
+import { createScene3CityScene } from './scenes/Scene3CityScene';
 import { loadKTX2Texture } from './utils/loaders';
 import { damp } from './scroll/math';
 
@@ -27,6 +28,7 @@ const BOOT_LOADER_HIDE_DURATION_MS = 750;
 const bootLoader = document.querySelector<HTMLElement>('[data-boot]');
 const bootLabel = document.querySelector<HTMLElement>('[data-boot-label]');
 const earthOverlayElement = document.querySelector<HTMLElement>('[data-earth-overlay]');
+const scene3OverlayElement = document.querySelector<HTMLElement>('[data-scene3-overlay]');
 
 /** 更新启动加载页面的提示文字 */
 function setBootMessage(message: string) {
@@ -119,8 +121,10 @@ async function bootstrap() {
     fit: 'cover',
     muted: true,
   });
-  const earthScene = await createEarthScene();
-  const scene1 = createScene1();
+  const [earthScene, scene1] = await Promise.all([
+    createEarthScene(),
+    createScene3CityScene(),
+  ]);
   const scene2 = createScene2();
   const sections = [videoScene, earthScene, scene1, scene2];
 
@@ -171,6 +175,7 @@ async function bootstrap() {
     ? introSegment.start + (introSegment.end - introSegment.start) * 0.5
     : 0;
   const earthOverlay = new EarthOverlay(earthOverlayElement, { brandStartProgress });
+  const scene3Overlay = new EarthOverlay(scene3OverlayElement, { brandEnabled: false });
   const debugPanel = createDebugPanel({
     engine,
     scroll,
@@ -205,6 +210,7 @@ async function bootstrap() {
 
     // e. 将计算出的状态同步给渲染系统和 UI 系统
     const earthState = frame.sceneStates.get('earth');
+    const scene3State = frame.sceneStates.get('scene1');
 
     backdrop.setProgress(frame.globalProgress);
 
@@ -218,6 +224,7 @@ async function bootstrap() {
 
     // 更新屏幕 UI 覆盖层
     earthOverlay.update(earthState, frame);
+    scene3Overlay.update(scene3State, frame);
     // 更新调试面板数据
     debugPanel.update(frame, scrollState);
   });
@@ -245,6 +252,7 @@ async function bootstrap() {
     transition,
     backdrop,
     earthOverlay,
+    scene3Overlay,
     debugPanel,
     sections,
     timeline,

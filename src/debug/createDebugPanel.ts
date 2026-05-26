@@ -13,6 +13,7 @@ import {
 import type { SceneBase } from '../scenes/SceneBase';
 import { isEarthDebugScene } from '../scenes/EarthScene';
 import type { EarthDebugSingleLightState } from '../scenes/EarthScene';
+import { isScene3DebugScene } from '../scenes/Scene3CityScene';
 
 export interface DebugPanelOptions {
   engine: Engine;
@@ -97,7 +98,7 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   const pane = new Pane({
     title: 'FT 调试面板',
     container,
-    expanded: true,
+    expanded: false,
   });
 
   const runtime = {
@@ -115,7 +116,7 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     mix: 0,
   };
 
-  const runtimeFolder = pane.addFolder({ title: '运行状态', expanded: true });
+  const runtimeFolder = pane.addFolder({ title: '运行状态', expanded: false });
   runtimeFolder.addBinding(runtime, 'progress', { readonly: true, label: '全局进度', format: (value) => value.toFixed(3) });
   runtimeFolder.addBinding(runtime, 'velocity', { readonly: true, label: '归一速度', format: (value) => value.toFixed(3) });
   runtimeFolder.addBinding(runtime, 'rawVelocity', { readonly: true, label: '原始速度', format: (value) => value.toFixed(0) });
@@ -153,9 +154,9 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     const earthDebug = earthScene.getEarthDebugData();
     const applyEarthDebug = () => earthScene.applyEarthDebug();
 
-    const earthFolder = pane.addFolder({ title: 'Earth 调试', expanded: true });
+    const earthFolder = pane.addFolder({ title: 'Earth 调试', expanded: false });
 
-    const earthMaterials = earthFolder.addFolder({ title: '材质', expanded: true });
+    const earthMaterials = earthFolder.addFolder({ title: '材质', expanded: false });
     earthMaterials.addBinding(earthDebug.materials, 'textColor', { label: '文字颜色' }).on('change', applyEarthDebug);
     earthMaterials.addBinding(earthDebug.materials, 'textOpacity', { min: 0, max: 1.5, step: 0.01, label: '文字透明度' }).on('change', applyEarthDebug);
     earthMaterials.addBinding(earthDebug.materials, 'ringColor', { label: '环颜色' }).on('change', applyEarthDebug);
@@ -167,7 +168,7 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthMaterials.addBinding(earthDebug.materials, 'sideEmissiveColor', { label: '侧面发光色' }).on('change', applyEarthDebug);
     earthMaterials.addBinding(earthDebug.materials, 'sideEmissiveIntensity', { min: 0, max: 3, step: 0.01, label: '侧面发光' }).on('change', applyEarthDebug);
 
-    const ringMotion = earthFolder.addFolder({ title: '环/文字运动', expanded: true });
+    const ringMotion = earthFolder.addFolder({ title: '环/文字运动', expanded: false });
     ringMotion.addBinding(earthDebug.motion.ring, 'autoRotateEnabled', { label: '自动旋转' }).on('change', applyEarthDebug);
     ringMotion.addBinding(earthDebug.motion.ring, 'autoRotateSpeed', { min: -0.4, max: 0.4, step: 0.001, label: '旋转速度' }).on('change', applyEarthDebug);
     ringMotion.addBinding(earthDebug.motion.ring, 'initialRotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '初始角度 Y' }).on('change', applyEarthDebug);
@@ -176,13 +177,13 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     ringMotion.addBinding(earthDebug.uiTransform, 'offsetZ', { min: -1, max: 1, step: 0.001, label: '整体偏移 Z' }).on('change', applyEarthDebug);
     ringMotion.addBinding(earthDebug.uiTransform, 'scale', { min: 0.2, max: 2, step: 0.001, label: '整体缩放' }).on('change', applyEarthDebug);
 
-    const earthMotion = earthFolder.addFolder({ title: '地球运动', expanded: true });
+    const earthMotion = earthFolder.addFolder({ title: '地球运动', expanded: false });
     earthMotion.addBinding(earthDebug.motion.earth, 'autoRotateEnabled', { label: '自动旋转' }).on('change', applyEarthDebug);
     earthMotion.addBinding(earthDebug.motion.earth, 'autoRotateSpeed', { min: -0.4, max: 0.4, step: 0.001, label: '旋转速度' }).on('change', applyEarthDebug);
     earthMotion.addBinding(earthDebug.motion.earth, 'initialRotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '初始角度 Y' }).on('change', applyEarthDebug);
     earthMotion.addBinding(earthDebug.earthTransform, 'scale', { min: 0.2, max: 2, step: 0.001, label: '整体缩放' }).on('change', applyEarthDebug);
 
-    const earthBottomHud = earthFolder.addFolder({ title: '底部 HUD', expanded: true });
+    const earthBottomHud = earthFolder.addFolder({ title: '底部 HUD', expanded: false });
     earthBottomHud.addBinding(earthDebug.bottomHud, 'visible', { label: '显示' }).on('change', applyEarthDebug);
     earthBottomHud.addBinding(earthDebug.bottomHud, 'opacity', { min: 0, max: 1, step: 0.01, label: '透明度' }).on('change', applyEarthDebug);
     earthBottomHud.addBinding(earthDebug.bottomHud, 'color', { label: '颜色' }).on('change', applyEarthDebug);
@@ -199,7 +200,7 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthTextBloom.addBinding(earthDebug.stage, 'textBloomRadius', { min: 0, max: 24, step: 0.1, label: '半径' }).on('change', applyEarthDebug);
     earthTextBloom.addBinding(earthDebug.stage, 'textBloomTint', { label: '颜色' }).on('change', applyEarthDebug);
 
-    const earthRingEdge = earthFolder.addFolder({ title: '环边框辉光', expanded: true });
+    const earthRingEdge = earthFolder.addFolder({ title: '环边框辉光', expanded: false });
     earthRingEdge.addBinding(earthDebug.ringEdge, 'visible', { label: '显示边框' }).on('change', applyEarthDebug);
     earthRingEdge.addBinding(earthDebug.ringEdge, 'color', { label: '边框颜色' }).on('change', applyEarthDebug);
     earthRingEdge.addBinding(earthDebug.ringEdge, 'opacity', { min: 0, max: 1.5, step: 0.01, label: '边框透明度' }).on('change', applyEarthDebug);
@@ -251,6 +252,45 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
 
     earthFolder.addButton({ title: '重置 Earth 参数' }).on('click', () => {
       earthScene.resetEarthDebug();
+    });
+  }
+
+  const scene3Scene = opts.sections.find(isScene3DebugScene);
+  if (scene3Scene) {
+    const scene3Debug = scene3Scene.getScene3DebugData();
+    const applyScene3Debug = () => scene3Scene.applyScene3Debug();
+
+    const scene3Folder = pane.addFolder({ title: 'Scene3 调试', expanded: false });
+
+    const scene3Materials = scene3Folder.addFolder({ title: '材质', expanded: false });
+    scene3Materials.addBinding(scene3Debug.materials, 'windowColor', { label: '窗户颜色' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'windowOpacity', { min: 0, max: 1, step: 0.01, label: '窗户透明度' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'windowEmissiveColor', { label: '窗户发光色' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'windowEmissiveIntensity', { min: 0, max: 3, step: 0.01, label: '窗户发光' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'windowRoughness', { min: 0, max: 1, step: 0.01, label: '窗户粗糙度' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'bodyColor', { label: '主体颜色' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'bodyOpacity', { min: 0, max: 1, step: 0.01, label: '主体透明度' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'bodyEmissiveColor', { label: '主体发光色' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'bodyEmissiveIntensity', { min: 0, max: 2, step: 0.01, label: '主体发光' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'bodyMetalness', { min: 0, max: 1, step: 0.01, label: '主体金属度' }).on('change', applyScene3Debug);
+    scene3Materials.addBinding(scene3Debug.materials, 'bodyRoughness', { min: 0, max: 1, step: 0.01, label: '主体粗糙度' }).on('change', applyScene3Debug);
+
+    const scene3Stage = scene3Folder.addFolder({ title: '整体位置', expanded: false });
+    scene3Stage.addBinding(scene3Debug.stage, 'positionX', { min: -3, max: 3, step: 0.01, label: '位置 X' }).on('change', applyScene3Debug);
+    scene3Stage.addBinding(scene3Debug.stage, 'positionY', { min: -1, max: 3, step: 0.01, label: '位置 Y' }).on('change', applyScene3Debug);
+    scene3Stage.addBinding(scene3Debug.stage, 'positionZ', { min: -3, max: 3, step: 0.01, label: '位置 Z' }).on('change', applyScene3Debug);
+    scene3Stage.addBinding(scene3Debug.stage, 'rotationY', { min: -Math.PI, max: Math.PI, step: 0.001, label: '旋转 Y' }).on('change', applyScene3Debug);
+    scene3Stage.addBinding(scene3Debug.stage, 'scale', { min: 0.2, max: 2, step: 0.01, label: '缩放' }).on('change', applyScene3Debug);
+
+    const scene3Drone = scene3Folder.addFolder({ title: '无人机整体', expanded: false });
+    scene3Drone.addBinding(scene3Debug.drone, 'scale', { min: 0.1, max: 5, step: 0.01, label: '缩放' }).on('change', applyScene3Debug);
+    scene3Drone.addBinding(scene3Debug.drone, 'positionX', { min: -1000, max: 1000, step: 1, label: '位置 X' }).on('change', applyScene3Debug);
+    scene3Drone.addBinding(scene3Debug.drone, 'positionY', { min: -1000, max: 1200, step: 1, label: '位置 Y' }).on('change', applyScene3Debug);
+    scene3Drone.addBinding(scene3Debug.drone, 'positionZ', { min: -1000, max: 1000, step: 1, label: '位置 Z' }).on('change', applyScene3Debug);
+    scene3Drone.addBinding(scene3Debug.drone, 'rotationYDeg', { min: -360, max: 360, step: 1, label: '旋转 Y' }).on('change', applyScene3Debug);
+
+    scene3Folder.addButton({ title: '重置 Scene3 参数' }).on('click', () => {
+      scene3Scene.resetScene3Debug();
     });
   }
 

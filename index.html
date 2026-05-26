@@ -10,7 +10,15 @@
     <div id="app">
       <div class="viewport" data-canvas></div>
       <div class="earth-overlay" data-earth-overlay aria-hidden="true">
-        <div class="earth-overlay__brand">凡拓数创发展历程</div>
+        <div class="earth-overlay__brand">
+          <video
+            class="earth-overlay__brand-video"
+            src="/%E6%A0%87%E9%A2%98.webm"
+            muted
+            playsinline
+            preload="auto"
+          ></video>
+        </div>
         <div class="earth-overlay__heading">
           <div class="earth-overlay__title">3D可视化技术</div>
           <div class="earth-overlay__phase">PHASE ONE</div>
@@ -23,9 +31,22 @@
         <div class="earth-overlay__blur earth-overlay__blur--right"></div>
         <div class="earth-overlay__blur earth-overlay__blur--bottom"></div>
       </div>
+      <div class="earth-overlay scene3-overlay" data-scene3-overlay aria-hidden="true">
+        <div class="earth-overlay__heading">
+          <div class="earth-overlay__title">3D&#x6570;&#x5B57;&#x591A;&#x5A92;&#x4F53;&#x96C6;&#x6210;&#x6280;&#x672F;</div>
+          <div class="earth-overlay__phase">PHASE TWO</div>
+        </div>
+        <div class="earth-overlay__copy">
+          <p>&#x4E13;&#x6CE8;&#x6570;&#x5B57;&#x521B;&#x610F;&#x7814;&#x53D1;&#x9769;&#x65B0;&#x6C89;&#x6D78;&#x4EA4;&#x4E92;&#x4F53;&#x9A8C;</p>
+          <p>&#x8D4B;&#x80FD;&#x56DB;&#x5927;&#x76DB;&#x4F1A;&#x7B49;&#x7EFC;&#x5408;&#x5927;&#x578B;&#x9879;&#x76EE;</p>
+          <p>&#x6253;&#x9020;&#x5168;&#x56FD;&#x5404;&#x5730;&#x6587;&#x5316;&#x65B0;&#x5730;&#x6807;</p>
+        </div>
+        <div class="earth-overlay__blur earth-overlay__blur--right"></div>
+        <div class="earth-overlay__blur earth-overlay__blur--bottom"></div>
+      </div>
       <div class="scroll-proxy" aria-hidden="true"></div>
       <div class="boot-loader" data-boot aria-live="polite" aria-busy="true">
-        <div class="boot-loader__ascii" aria-hidden="true"></div>
+        <img class="boot-loader__image" src="/loading.png" alt="" aria-hidden="true" />
         <span class="boot-loader__status" data-boot-label>Booting reverse-engineering workspace...</span>
       </div>
     </div>

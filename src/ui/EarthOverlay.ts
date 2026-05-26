@@ -20,6 +20,7 @@ function formatPx(value: number) {
 
 interface EarthOverlayOptions {
   brandStartProgress?: number;
+  brandEnabled?: boolean;
 }
 
 type TextRole = 'title' | 'phase' | 'copy';
@@ -83,15 +84,22 @@ const REVEAL_PROFILES: Record<TextRole, RevealProfile> = {
  */
 export class EarthOverlay {
   private readonly brandStartProgress: number;
+  private readonly brandElement: HTMLElement | null;
+  private readonly brandEnabled: boolean;
+  private readonly brandVideo: HTMLVideoElement | null;
   private readonly titleLine: TextLine | null;
   private readonly phaseLine: TextLine | null;
   private readonly copyLines: TextLine[];
+  private brandVideoPlayed = false;
 
   constructor(
     private readonly element: HTMLElement | null,
     opts: EarthOverlayOptions = {},
   ) {
     this.brandStartProgress = opts.brandStartProgress ?? 0;
+    this.brandElement = this.element?.querySelector<HTMLElement>('.earth-overlay__brand') ?? null;
+    this.brandEnabled = opts.brandEnabled ?? !!this.brandElement;
+    this.brandVideo = this.element?.querySelector<HTMLVideoElement>('.earth-overlay__brand-video') ?? null;
     this.titleLine = this.prepareTextLine('.earth-overlay__title', 'title');
     this.phaseLine = this.prepareTextLine('.earth-overlay__phase', 'phase');
     this.copyLines = this.prepareTextLines('.earth-overlay__copy p', 'copy');
@@ -103,7 +111,9 @@ export class EarthOverlay {
     const focus = clamp01(state?.focus ?? 0);
     const local = clamp01(state?.sceneProgress ?? 0);
     const global = clamp01(frame?.globalProgress ?? 0);
-    const brand = smoothstep(this.brandStartProgress, this.brandStartProgress + 0.035, global);
+    const brand = this.brandEnabled
+      ? smoothstep(this.brandStartProgress, this.brandStartProgress + 0.035, global)
+      : 0;
     const heading = focus * smoothstep(0.46, 0.7, local);
     const frameOpacity = focus * smoothstep(0.36, 0.66, local);
     const copy = focus * smoothstep(0.64, 0.88, local);
@@ -114,6 +124,7 @@ export class EarthOverlay {
     this.element.style.setProperty('--earth-frame-opacity', frameOpacity.toFixed(3));
     this.element.style.setProperty('--earth-copy-opacity', copy.toFixed(3));
 
+    this.updateBrandVideo(brand);
     this.revealLine(this.titleLine, heading, 0, 1);
     this.revealLine(this.phaseLine, heading, 0.28, 0.86);
     this.copyLines.forEach((line, index) => {
@@ -183,6 +194,26 @@ export class EarthOverlay {
     char.style.setProperty('--char-blur', formatPx(blur));
     char.style.setProperty('--char-glow-size', formatPx(glowSize));
     char.style.setProperty('--char-glow-alpha', glowAlpha.toFixed(3));
+  }
+
+  private updateBrandVideo(brandProgress: number) {
+    if (!this.brandVideo) return;
+
+    if (brandProgress <= 0.005) {
+      this.brandVideo.pause();
+      this.brandVideo.currentTime = 0;
+      this.brandVideoPlayed = false;
+      return;
+    }
+
+    if (brandProgress > 0.02 && !this.brandVideoPlayed) {
+      this.brandVideo.currentTime = 0;
+      this.brandVideoPlayed = true;
+      this.brandVideo.play().catch(() => {
+        // Muted inline video should autoplay, but keeping this silent avoids
+        // interrupting boot if a browser policy still blocks it.
+      });
+    }
   }
 }
 
