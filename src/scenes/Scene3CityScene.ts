@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { ModelScene } from './ModelScene';
-import type { SceneBase } from './SceneBase';
+import type { SceneBase, ScenePostPipeline, ScenePostProcessable } from './SceneBase';
+import { Scene3PostPipeline } from './scene3/Scene3PostPipeline';
 import { loadGLTF } from '../utils/loaders';
 
 const SCENE3_MODEL_ROOT = '/models/scene3';
@@ -48,9 +49,26 @@ export interface Scene3DroneDebugState {
   rotationYDeg: number;
 }
 
+export interface Scene3DebugPostState {
+  enabled: boolean;
+  toneMappingMode: Scene3PostToneMappingMode;
+  exposure: number;
+}
+
+export type Scene3PostToneMappingMode =
+  | 'LINEAR'
+  | 'REINHARD'
+  | 'REINHARD2'
+  | 'UNCHARTED2'
+  | 'CINEON'
+  | 'ACES_FILMIC'
+  | 'AGX'
+  | 'NEUTRAL';
+
 export interface Scene3DebugData {
   materials: Scene3MaterialDebugState;
   lighting: Scene3LightingDebugState;
+  post: Scene3DebugPostState;
   drone: Scene3DroneDebugState;
   stage: Scene3StageDebugState;
   videoCards: Scene3VideoCardsDebugState;
@@ -156,6 +174,11 @@ function createScene3DebugData(): Scene3DebugData {
       rimIntensity: 1.96,
       shadowsEnabled: true,
     },
+    post: {
+      enabled: false,
+      toneMappingMode: 'ACES_FILMIC',
+      exposure: 1,
+    },
     drone: {
       scale: 2,
       positionX: -10,
@@ -202,7 +225,7 @@ function createScene3DebugData(): Scene3DebugData {
   };
 }
 
-export class Scene3CityScene extends ModelScene {
+export class Scene3CityScene extends ModelScene implements ScenePostProcessable {
   private readonly animationControllers: Scene3AnimationController[] = [];
   private readonly debugData = createScene3DebugData();
   private readonly environmentTexture: THREE.Texture | null;
@@ -288,6 +311,7 @@ export class Scene3CityScene extends ModelScene {
   private boundsFrame: THREE.LineSegments | null = null;
   private readonly videoCardRoot = new THREE.Group();
   private readonly videoCards: Scene3VideoCard[] = [];
+  private scene3PostPipeline: ScenePostPipeline | null = null;
   private droneRoot: THREE.Object3D | null = null;
   private droneTransformRoot: THREE.Group | null = null;
   private sceneActive = false;
@@ -386,6 +410,7 @@ export class Scene3CityScene extends ModelScene {
     this.boundsFrameMaterial.dispose();
     this.boundsFrame?.geometry.dispose();
     this.videoCards.forEach((card) => this.disposeVideoCard(card));
+    this.scene3PostPipeline?.dispose();
     super.dispose();
   }
 
@@ -406,12 +431,21 @@ export class Scene3CityScene extends ModelScene {
     const defaults = createScene3DebugData();
     Object.assign(this.debugData.materials, defaults.materials);
     Object.assign(this.debugData.lighting, defaults.lighting);
+    Object.assign(this.debugData.post, defaults.post);
     Object.assign(this.debugData.drone, defaults.drone);
     Object.assign(this.debugData.stage, defaults.stage);
     Object.assign(this.debugData.videoCards.left, defaults.videoCards.left);
     Object.assign(this.debugData.videoCards.right, defaults.videoCards.right);
     Object.assign(this.debugData.bounds, defaults.bounds);
     this.applyScene3Debug();
+  }
+
+  getPostPipeline(renderer: THREE.WebGLRenderer) {
+    if (!this.scene3PostPipeline) {
+      this.scene3PostPipeline = new Scene3PostPipeline(renderer, this.scene, this.camera, this.debugData.post);
+    }
+
+    return this.scene3PostPipeline;
   }
 
   private createVideoCard(

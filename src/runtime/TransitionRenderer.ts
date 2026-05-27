@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import compositeVert from '../shaders/composite.vert.glsl?raw';
 import compositeFrag from '../shaders/composite.frag.glsl?raw';
 import type { EngineView } from '../core/Engine';
-import type { SceneBase } from '../scenes/SceneBase';
+import type { SceneBase, ScenePostPipeline, ScenePostProcessable } from '../scenes/SceneBase';
 
 /**
  * 渲染层接口：定义了一个可以被 TransitionRenderer 渲染的图层
@@ -55,6 +55,10 @@ function clamp01(value: number) {
   return Math.min(1, Math.max(0, value));
 }
 
+function isPostProcessableScene(scene: SceneBase): scene is ScenePostProcessable {
+  return typeof (scene as Partial<ScenePostProcessable>).getPostPipeline === 'function';
+}
+
 /**
  * TransitionRenderer 类：负责场景的合成与转场效果。
  *
@@ -76,12 +80,14 @@ export class TransitionRenderer implements EngineView {
   private renderTargetBackdrop: THREE.WebGLRenderTarget;
   private renderTargetA: THREE.WebGLRenderTarget;
   private renderTargetB: THREE.WebGLRenderTarget;
+  private scenePostPipelines = new Map<SceneBase, ScenePostPipeline>();
 
   private backdrop: RenderLayer | null;
   private sceneA: SceneBase | null = null;
   private sceneB: SceneBase | null = null;
   private mix = 0;
   private velocity = 0;
+  private lastDelta = 0;
 
   private size = { width: 1, height: 1, pixelRatio: 1 };
   private blueOffset = new THREE.Vector2(); // 蓝噪偏移，每帧移动以产生动态颗粒感
@@ -163,6 +169,9 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetB.setSize(rw, rh);
     this.compositeMaterial.uniforms.uResolution.value.set(rw, rh);
     this.backdrop?.setSize?.(rw, rh);
+    for (const pipeline of this.scenePostPipelines.values()) {
+      pipeline.setSize(width, height, pixelRatio);
+    }
   }
 
   // --- Setter 方法（供 GUI 或外部调用） ---
@@ -213,6 +222,7 @@ export class TransitionRenderer implements EngineView {
    * 更新逻辑：驱动各子场景的 update 方法 
    */
   update(delta: number, elapsed: number) {
+    this.lastDelta = delta;
     this.backdrop?.update?.(delta, elapsed);
     this.sceneA?.update(delta, elapsed);
 
@@ -287,6 +297,10 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetBackdrop.dispose();
     this.renderTargetA.dispose();
     this.renderTargetB.dispose();
+    for (const pipeline of this.scenePostPipelines.values()) {
+      pipeline.dispose();
+    }
+    this.scenePostPipelines.clear();
     this.compositeQuad.geometry.dispose();
     this.compositeMaterial.dispose();
     this.backdrop?.dispose?.();
@@ -311,12 +325,32 @@ export class TransitionRenderer implements EngineView {
   /** 前景图层（业务场景）渲染辅助方法 */
   private renderForegroundToTarget(
     renderer: THREE.WebGLRenderer,
-    layer: RenderLayer,
+    layer: SceneBase,
     target: THREE.WebGLRenderTarget,
   ) {
     renderer.setRenderTarget(target);
     renderer.setClearColor(0x000000, 0); // 前景必须透明，以便合成
     renderer.clear(true, true, true);
-    renderer.render(layer.scene, layer.camera);
+    const pipeline = this.getScenePostPipeline(renderer, layer);
+    if (pipeline) {
+      pipeline.render(renderer, target, this.lastDelta);
+    } else {
+      renderer.render(layer.scene, layer.camera);
+    }
+  }
+
+  private getScenePostPipeline(renderer: THREE.WebGLRenderer, scene: SceneBase) {
+    if (!isPostProcessableScene(scene)) return null;
+
+    let pipeline = this.scenePostPipelines.get(scene);
+    if (!pipeline) {
+      pipeline = scene.getPostPipeline(renderer) ?? undefined;
+      if (pipeline) {
+        pipeline.setSize(this.size.width, this.size.height, this.size.pixelRatio);
+        this.scenePostPipelines.set(scene, pipeline);
+      }
+    }
+
+    return pipeline ?? null;
   }
 }

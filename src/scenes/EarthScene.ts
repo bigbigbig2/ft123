@@ -3,8 +3,9 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { ModelScene } from './ModelScene';
-import type { SceneBase, SceneScrollState } from './SceneBase';
+import type { SceneBase, ScenePostProcessable, ScenePostPipeline, SceneScrollState } from './SceneBase';
 import { createProceduralEarth } from './earth/createEarthModel';
+import { EarthPostPipeline } from './earth/EarthPostPipeline';
 import {
   DEFAULT_EARTH_TIMELINE_CONFIG,
   getEarthTimeline,
@@ -29,6 +30,8 @@ const STAGE_RING_SCALE_START = 0.9;
 const STAGE_RING_SCALE_END = 1;
 const ROOT_INTRO_ROT_Y_START = -0.22;
 const ROOT_INTRO_ROT_Y_END = 0.08;
+const BOTTOM_HUD_RENDER_ORDER = -20;
+const RING_TEXT_RENDER_ORDER = 28;
 const RING_LAYER_KEYS = ['inner', 'middle', 'outer'] as const;
 const RING_TEXTURE_FACE_KEYS = ['face3', 'face8', 'face9'] as const;
 
@@ -59,6 +62,14 @@ function createRingUiMaterial() {
     depthWrite: false,
     toneMapped: false,
   });
+}
+
+function applyRingUiMaterialOpacity(material: THREE.MeshStandardMaterial, opacity: number) {
+  const isOpaque = opacity >= 0.999;
+  material.opacity = opacity;
+  material.transparent = !isOpaque;
+  material.depthWrite = isOpaque;
+  material.needsUpdate = true;
 }
 
 interface RingTextureMaterialOptions {
@@ -93,6 +104,7 @@ function createRingTextureMaterial(
     uniforms: {
       uMap: { value: texture },
       uOpacity: { value: options.textureOpacity },
+      uBaseOpacity: { value: options.panelOpacity },
       uBaseColor: { value: new THREE.Color(options.baseColor) },
       uTintColor: { value: new THREE.Color(options.tintColor) },
       uPanelOpacity: { value: options.panelOpacity },
@@ -123,6 +135,7 @@ function createRingTextureMaterial(
     fragmentShader: `
       uniform sampler2D uMap;
       uniform float uOpacity;
+      uniform float uBaseOpacity;
       uniform vec3 uBaseColor;
       uniform vec3 uTintColor;
       uniform float uPanelOpacity;
@@ -162,7 +175,7 @@ function createRingTextureMaterial(
         vec3 textureColor = texel.rgb * uBrightness * uTintColor;
         textureColor += highlight * uTintColor * 0.16;
         vec3 color = mix(uBaseColor, textureColor, clamp(uOpacity, 0.0, 1.0));
-        float alpha = clamp(uPanelOpacity + texel.a * uOpacity, 0.0, 1.0);
+        float alpha = clamp(max(uBaseOpacity, uPanelOpacity) + texel.a * uOpacity, 0.0, 1.0);
 
         gl_FragColor = vec4(color, alpha);
         #include <colorspace_fragment>
@@ -307,6 +320,14 @@ function createRingEdgeLines(root: THREE.Object3D, material: LineMaterial) {
   }
 
   return lines;
+}
+
+function setTextRenderOrder(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.renderOrder = RING_TEXT_RENDER_ORDER;
+  });
 }
 
 function colorToHex(color: THREE.Color) {
@@ -477,6 +498,22 @@ export interface EarthDebugBottomHudState {
   speed: number;
 }
 
+export interface EarthDebugPostState {
+  enabled: boolean;
+  toneMappingMode: EarthPostToneMappingMode;
+  exposure: number;
+}
+
+export type EarthPostToneMappingMode =
+  | 'LINEAR'
+  | 'REINHARD'
+  | 'REINHARD2'
+  | 'UNCHARTED2'
+  | 'CINEON'
+  | 'ACES_FILMIC'
+  | 'AGX'
+  | 'NEUTRAL';
+
 export interface EarthDebugGlobeState {
   bumpScale: number;
   normalScale: number;
@@ -538,6 +575,7 @@ export interface EarthDebugData {
   uiTransform: EarthDebugUiTransformState;
   earthTransform: EarthDebugEarthTransformState;
   bottomHud: EarthDebugBottomHudState;
+  post: EarthDebugPostState;
   globe: EarthDebugGlobeState;
   atmosphere: EarthDebugAtmosphereState;
   lights: EarthDebugLightState;
@@ -592,7 +630,7 @@ function createBottomHud(textures: THREE.Texture[]) {
 
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(4.35, 4.35), material);
     plane.name = `earth-bottom-hud-plane-${index + 1}`;
-    plane.renderOrder = 10 + index;
+    plane.renderOrder = BOTTOM_HUD_RENDER_ORDER + index;
 
     const pivot = new THREE.Group();
     pivot.name = `earth-bottom-hud-pivot-${index + 1}`;
@@ -761,6 +799,7 @@ export async function createEarthScene() {
     outer: ringLayerNodes.outer?.rotation.y ?? 0,
   };
   const textMaterials = normalizeText(text.scene); // 鑷姩鎻愬彇骞舵爣鍑嗗寲鏂囧瓧鏉愯川
+  setTextRenderOrder(text.scene);
 
   earth.group.scale.setScalar(1.2);
   ringGroup.scale.setScalar(0.92);
@@ -836,6 +875,11 @@ export async function createEarthScene() {
       color: '#bfe8ff',
       opacity: 0.95,
       lineWidth: 1.2,
+    },
+    post: {
+      enabled: false,
+      toneMappingMode: 'ACES_FILMIC',
+      exposure: 1,
     },
     materials: {
       textColor: '#ffffff',
@@ -1027,12 +1071,36 @@ export async function createEarthScene() {
     }
   }
 
+  function isRingTextureFaceVisible(faceKey: EarthRingTextureFaceKey) {
+    switch (faceKey) {
+      case 'face3':
+        return debugData.materials.ringTextureFace3Visible;
+      case 'face8':
+        return debugData.materials.ringTextureFace8Visible;
+      case 'face9':
+        return debugData.materials.ringTextureFace9Visible;
+    }
+  }
+
+  function applyRingTextureFaceMaterialAssignments() {
+    for (const faceKey of RING_TEXTURE_FACE_KEYS) {
+      setRingFaceTextureMaterial(
+        ring.scene,
+        faceKey,
+        isRingTextureFaceVisible(faceKey) ? ringTextureFaceMaterials[faceKey] : ringMaterial,
+      );
+    }
+  }
+
   function applyMaterialDebugSettings() {
+    applyRingTextureFaceMaterialAssignments();
+
     ringMaterial.color.set(debugData.materials.ringColor);
-    ringMaterial.opacity = debugData.materials.ringOpacity;
+    applyRingUiMaterialOpacity(ringMaterial, debugData.materials.ringOpacity);
     ringMaterial.emissive.set(debugData.materials.ringEmissiveColor);
     ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity;
-    ringMaterial.needsUpdate = true;
+    ringTextureFaceMaterials.face3.uniforms.uBaseColor.value.set(debugData.materials.ringColor);
+    ringTextureFaceMaterials.face3.uniforms.uBaseOpacity.value = debugData.materials.ringOpacity;
     ringTextureFaceMaterials.face3.uniforms.uOpacity.value = getRingTextureFaceOpacity('face3');
     ringTextureFaceMaterials.face3.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity;
     ringTextureFaceMaterials.face3.uniforms.uBrightness.value = debugData.materials.ringTexture1Brightness;
@@ -1049,6 +1117,8 @@ export async function createEarthScene() {
       debugData.materials.ringTextureFace3UvSwap,
     );
     ringTextureFaceMaterials.face3.needsUpdate = true;
+    ringTextureFaceMaterials.face8.uniforms.uBaseColor.value.set(debugData.materials.ringColor);
+    ringTextureFaceMaterials.face8.uniforms.uBaseOpacity.value = debugData.materials.ringOpacity;
     ringTextureFaceMaterials.face8.uniforms.uOpacity.value = getRingTextureFaceOpacity('face8');
     ringTextureFaceMaterials.face8.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity;
     ringTextureFaceMaterials.face8.uniforms.uBrightness.value = debugData.materials.ringTexture2Brightness;
@@ -1065,6 +1135,8 @@ export async function createEarthScene() {
       debugData.materials.ringTextureFace8UvSwap,
     );
     ringTextureFaceMaterials.face8.needsUpdate = true;
+    ringTextureFaceMaterials.face9.uniforms.uBaseColor.value.set(debugData.materials.ringColor);
+    ringTextureFaceMaterials.face9.uniforms.uBaseOpacity.value = debugData.materials.ringOpacity;
     ringTextureFaceMaterials.face9.uniforms.uOpacity.value = getRingTextureFaceOpacity('face9');
     ringTextureFaceMaterials.face9.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity;
     ringTextureFaceMaterials.face9.uniforms.uBrightness.value = debugData.materials.ringTexture1Brightness;
@@ -1083,10 +1155,9 @@ export async function createEarthScene() {
     ringTextureFaceMaterials.face9.needsUpdate = true;
 
     ringSideMaterial.color.set(debugData.materials.sideColor);
-    ringSideMaterial.opacity = debugData.materials.sideOpacity;
+    applyRingUiMaterialOpacity(ringSideMaterial, debugData.materials.sideOpacity);
     ringSideMaterial.emissive.set(debugData.materials.sideEmissiveColor);
     ringSideMaterial.emissiveIntensity = debugData.materials.sideEmissiveIntensity;
-    ringSideMaterial.needsUpdate = true;
 
     for (const material of textMaterials) {
       material.color.set(debugData.materials.textColor);
@@ -1288,15 +1359,18 @@ export async function createEarthScene() {
     ringGroup.scale.setScalar(baseRingScale * THREE.MathUtils.lerp(STAGE_RING_SCALE_START, STAGE_RING_SCALE_END, staging));
 
     // 鍔ㄦ€佽皟鏁存潗璐ㄥ弬鏁帮細缁撳悎 staging 鍜?focus锛堣浆鍦烘贩鍚堝害锛?
-    ringMaterial.opacity = debugData.materials.ringOpacity * staging * focus;
+    applyRingUiMaterialOpacity(ringMaterial, debugData.materials.ringOpacity * staging * focus);
+    ringTextureFaceMaterials.face3.uniforms.uBaseOpacity.value = debugData.materials.ringOpacity * staging * focus;
     ringTextureFaceMaterials.face3.uniforms.uOpacity.value = getRingTextureFaceOpacity('face3') * staging * focus;
     ringTextureFaceMaterials.face3.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity * staging * focus;
+    ringTextureFaceMaterials.face8.uniforms.uBaseOpacity.value = debugData.materials.ringOpacity * staging * focus;
     ringTextureFaceMaterials.face8.uniforms.uOpacity.value = getRingTextureFaceOpacity('face8') * staging * focus;
     ringTextureFaceMaterials.face8.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity * staging * focus;
+    ringTextureFaceMaterials.face9.uniforms.uBaseOpacity.value = debugData.materials.ringOpacity * staging * focus;
     ringTextureFaceMaterials.face9.uniforms.uOpacity.value = getRingTextureFaceOpacity('face9') * staging * focus;
     ringTextureFaceMaterials.face9.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity * staging * focus;
     ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
-    ringSideMaterial.opacity = debugData.materials.sideOpacity * staging * focus;
+    applyRingUiMaterialOpacity(ringSideMaterial, debugData.materials.sideOpacity * staging * focus);
     ringSideMaterial.emissiveIntensity = debugData.materials.sideEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
     ringEdgeMaterial.opacity = debugData.ringEdge.opacity * staging * focus;
 
@@ -1371,7 +1445,14 @@ export async function createEarthScene() {
     });
   };
 
-  const earthScene = scene as ModelScene & EarthSceneDebugControls;
+  let earthPostPipeline: ScenePostPipeline | null = null;
+  const earthScene = scene as ModelScene & EarthSceneDebugControls & ScenePostProcessable;
+  earthScene.getPostPipeline = (renderer) => {
+    if (!earthPostPipeline) {
+      earthPostPipeline = new EarthPostPipeline(renderer, scene.scene, scene.camera, debugData.post);
+    }
+    return earthPostPipeline;
+  };
   earthScene.getEarthDebugData = () => debugData;
   earthScene.applyEarthDebug = () => {
     applyResolvedState(lastSourceState ?? createFallbackScrollState());

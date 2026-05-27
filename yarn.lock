@@ -133,6 +133,11 @@ postcss@^8.4.43:
     picocolors "^1.1.1"
     source-map-js "^1.2.1"
 
+postprocessing@^6.39.1:
+  version "6.39.1"
+  resolved "https://registry.npmmirror.com/postprocessing/-/postprocessing-6.39.1.tgz"
+  integrity sha512-R2dG2zy+BAx3USl5EHw+PvnrlbT5PKnZVp3se0HCR0pWH8WQdh742yNG4YWOsq6c0bFpffk0Gd2RqPeoP/wKng==
+
 rollup@^4.20.0:
   version "4.60.3"
   resolved "https://registry.npmmirror.com/rollup/-/rollup-4.60.3.tgz"
@@ -172,7 +177,7 @@ source-map-js@^1.2.1:
   resolved "https://registry.npmmirror.com/source-map-js/-/source-map-js-1.2.1.tgz"
   integrity sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==
 
-three@^0.179.1:
+three@^0.179.1, "three@>= 0.168.0 < 0.185.0":
   version "0.179.1"
   resolved "https://registry.npmmirror.com/three/-/three-0.179.1.tgz"
   integrity sha512-5y/elSIQbrvKOISxpwXCR4sQqHtGiOI+MKLc3SsBdDXA2hz3Mdp3X59aUp8DyybMa34aeBwbFTpdoLJaUDEWSw==

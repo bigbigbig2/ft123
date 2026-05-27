@@ -37,3 +37,13 @@ export interface SceneBase {
   setSize(width: number, height: number): void;
   dispose?(): void;
 }
+
+export interface ScenePostPipeline {
+  setSize(width: number, height: number, pixelRatio: number): void;
+  render(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget, delta: number): void;
+  dispose(): void;
+}
+
+export interface ScenePostProcessable extends SceneBase {
+  getPostPipeline(renderer: THREE.WebGLRenderer): ScenePostPipeline | null;
+}

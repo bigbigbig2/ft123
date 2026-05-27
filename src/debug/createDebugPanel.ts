@@ -254,6 +254,23 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthRingEdge.addBinding(earthDebug.ringEdge, 'opacity', { min: 0, max: 1.5, step: 0.01, label: '边框透明度' }).on('change', applyEarthDebug);
     earthRingEdge.addBinding(earthDebug.ringEdge, 'lineWidth', { min: 0.2, max: 8, step: 0.1, label: '边框线宽' }).on('change', applyEarthDebug);
 
+    const earthPost = earthFolder.addFolder({ title: '地球后处理', expanded: false });
+    earthPost.addBinding(earthDebug.post, 'enabled', { label: '启用' }).on('change', applyEarthDebug);
+    earthPost.addBinding(earthDebug.post, 'exposure', { min: 0, max: 3, step: 0.01, label: '映射强度' }).on('change', applyEarthDebug);
+    earthPost.addBinding(earthDebug.post, 'toneMappingMode', {
+      label: '映射类型',
+      options: {
+        Linear: 'LINEAR',
+        Reinhard: 'REINHARD',
+        Reinhard2: 'REINHARD2',
+        Uncharted2: 'UNCHARTED2',
+        Cineon: 'CINEON',
+        ACES: 'ACES_FILMIC',
+        AgX: 'AGX',
+        Neutral: 'NEUTRAL',
+      },
+    }).on('change', applyEarthDebug);
+
     const earthGlobe = earthFolder.addFolder({ title: '地球材质', expanded: false });
     earthGlobe.addBinding(earthDebug.globe, 'bumpScale', { min: 0, max: 0.08, step: 0.0005, label: '凹凸强度' }).on('change', applyEarthDebug);
     earthGlobe.addBinding(earthDebug.globe, 'normalScale', { min: 0, max: 2.5, step: 0.01, label: '法线强度' }).on('change', applyEarthDebug);
@@ -331,6 +348,23 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     scene3Lighting.addBinding(scene3Debug.lighting, 'fillIntensity', { min: 0, max: 3, step: 0.01, label: '补光' }).on('change', applyScene3Debug);
     scene3Lighting.addBinding(scene3Debug.lighting, 'rimIntensity', { min: 0, max: 5, step: 0.01, label: '轮廓光' }).on('change', applyScene3Debug);
     scene3Lighting.addBinding(scene3Debug.lighting, 'shadowsEnabled', { label: '阴影' }).on('change', applyScene3Debug);
+
+    const scene3Post = scene3Folder.addFolder({ title: 'Scene3 后处理', expanded: false });
+    scene3Post.addBinding(scene3Debug.post, 'enabled', { label: '启用' }).on('change', applyScene3Debug);
+    scene3Post.addBinding(scene3Debug.post, 'exposure', { min: 0, max: 3, step: 0.01, label: '映射强度' }).on('change', applyScene3Debug);
+    scene3Post.addBinding(scene3Debug.post, 'toneMappingMode', {
+      label: '映射类型',
+      options: {
+        Linear: 'LINEAR',
+        Reinhard: 'REINHARD',
+        Reinhard2: 'REINHARD2',
+        Uncharted2: 'UNCHARTED2',
+        Cineon: 'CINEON',
+        ACES: 'ACES_FILMIC',
+        AgX: 'AGX',
+        Neutral: 'NEUTRAL',
+      },
+    }).on('change', applyScene3Debug);
 
     const scene3Stage = scene3Folder.addFolder({ title: '整体位置', expanded: false });
     scene3Stage.addBinding(scene3Debug.stage, 'positionX', { min: -3, max: 3, step: 0.01, label: '位置 X' }).on('change', applyScene3Debug);
