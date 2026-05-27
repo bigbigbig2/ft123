@@ -37,21 +37,3 @@ export interface SceneBase {
   setSize(width: number, height: number): void;
   dispose?(): void;
 }
-
-export interface SceneBloomEffect {
-  enabled: boolean;
-  /** Object/camera layer used for selective bloom rendering. */
-  layer: number;
-  strength?: number;
-  radius?: number;
-  tint?: THREE.ColorRepresentation;
-  resolutionScale?: number;
-}
-
-export interface ScenePostEffects {
-  bloom?: SceneBloomEffect | SceneBloomEffect[];
-}
-
-export interface PostProcessableScene extends SceneBase {
-  getPostEffects(): ScenePostEffects;
-}

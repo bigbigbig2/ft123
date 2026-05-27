@@ -113,7 +113,7 @@ float transitionFogMask(float progress, float peak) {
   vec2 centered = (vUv - vec2(0.52, 0.48)) * vec2(1.0, 1.18);
   float centerWash = 1.0 - smoothstep(0.05, 0.92, length(centered));
   float bottomMist = smoothstep(0.44, 0.02, vUv.y);
-  float topBloom = smoothstep(0.62, 1.0, vUv.y) * smoothstep(0.04, 0.78, progress);
+  float topWash = smoothstep(0.62, 1.0, vUv.y) * smoothstep(0.04, 0.78, progress);
   float sideMist = (
     smoothstep(0.24, 0.0, vUv.x) +
     smoothstep(0.76, 1.0, vUv.x)
@@ -122,7 +122,7 @@ float transitionFogMask(float progress, float peak) {
   return saturate(
     centerWash * (0.18 + peak * 0.42) +
     bottomMist * 0.34 +
-    topBloom * 0.32 +
+    topWash * 0.32 +
     sideMist
   );
 }

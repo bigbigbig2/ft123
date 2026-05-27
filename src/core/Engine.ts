@@ -55,7 +55,7 @@ export class Engine {
     
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace; // 采用标准 sRGB 色彩空间
-    this.renderer.toneMapping = THREE.NoToneMapping;      // 默认不开启色调映射，由后处理控制
+    this.renderer.toneMapping = THREE.NoToneMapping;      // 默认不开启色调映射，由场景和合成管线控制
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setClearColor(0x0b0d12, 1);              // 设置底色

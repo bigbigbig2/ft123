@@ -3,7 +3,6 @@ import compositeVert from '../shaders/composite.vert.glsl?raw';
 import compositeFrag from '../shaders/composite.frag.glsl?raw';
 import type { EngineView } from '../core/Engine';
 import type { SceneBase } from '../scenes/SceneBase';
-import { ScenePostProcessor } from '../render/ScenePostProcessor';
 
 /**
  * 渲染层接口：定义了一个可以被 TransitionRenderer 渲染的图层
@@ -62,7 +61,7 @@ function clamp01(value: number) {
  * 核心原理：
  * 1. 离屏渲染 (Off-screen Rendering)：将背景层、场景 A、场景 B 分别渲染到三个不同的离屏缓冲区 (RenderTarget)。
  * 2. 最终合成 (Compositing)：使用一个全屏 Quad（四边形）配合自定义 Shader (compositeFrag)，
- *    根据 mix (混合系数) 和 velocity (滚动速度) 将上述缓冲区内容合成，并施加拖影、色散、噪点等后处理效果。
+ *    根据 mix (混合系数) 和 velocity (滚动速度) 将上述缓冲区内容合成，并施加拖影、色散、噪点等转场效果。
  */
 export class TransitionRenderer implements EngineView {
   readonly name = 'transition-renderer';
@@ -77,7 +76,6 @@ export class TransitionRenderer implements EngineView {
   private renderTargetBackdrop: THREE.WebGLRenderTarget;
   private renderTargetA: THREE.WebGLRenderTarget;
   private renderTargetB: THREE.WebGLRenderTarget;
-  private scenePostProcessor = new ScenePostProcessor();
 
   private backdrop: RenderLayer | null;
   private sceneA: SceneBase | null = null;
@@ -106,7 +104,7 @@ export class TransitionRenderer implements EngineView {
       sceneBRevealStart: 0.28,
     };
 
-    // 初始化合成材质，所有后处理 Uniforms 都定义在这里
+    // 初始化合成材质，所有转场合成 Uniforms 都定义在这里
     this.compositeMaterial = new THREE.ShaderMaterial({
       vertexShader: compositeVert,
       fragmentShader: compositeFrag,
@@ -163,7 +161,6 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetBackdrop.setSize(rw, rh);
     this.renderTargetA.setSize(rw, rh);
     this.renderTargetB.setSize(rw, rh);
-    this.scenePostProcessor.setSize(rw, rh);
     this.compositeMaterial.uniforms.uResolution.value.set(rw, rh);
     this.backdrop?.setSize?.(rw, rh);
   }
@@ -290,7 +287,6 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetBackdrop.dispose();
     this.renderTargetA.dispose();
     this.renderTargetB.dispose();
-    this.scenePostProcessor.dispose();
     this.compositeQuad.geometry.dispose();
     this.compositeMaterial.dispose();
     this.backdrop?.dispose?.();
@@ -322,6 +318,5 @@ export class TransitionRenderer implements EngineView {
     renderer.setClearColor(0x000000, 0); // 前景必须透明，以便合成
     renderer.clear(true, true, true);
     renderer.render(layer.scene, layer.camera);
-    this.scenePostProcessor.renderSceneEffects(renderer, layer as SceneBase, target);
   }
 }

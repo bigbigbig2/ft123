@@ -83,7 +83,7 @@ function showBootError() {
  * 2. 异步加载全局纹理（KTX2 格式以优化显存）。
  * 3. 实例化各个 3D 场景。
  * 4. 建立滚动系统与时间线导演的连接。
- * 5. 设置后处理渲染管线。
+ * 5. 设置转场合成渲染管线。
  * 6. 开启核心循环。
  */
 async function bootstrap() {
@@ -95,7 +95,7 @@ async function bootstrap() {
   setBootMessage('Preparing renderer...');
   const engine = new Engine(container);
 
-  // 2. 加载转场和后处理所需的纹理
+  // 2. 加载转场合成所需的纹理
   setBootMessage('Loading transition textures...');
   const [scrollTex, blueTex, perlinTex, dotTex] = await Promise.all([
     loadKTX2Texture(SCROLL_NOISE, engine.renderer, { repeat: [2, 2] }),
@@ -147,7 +147,7 @@ async function bootstrap() {
     wheelDeltaClamp: 120, // 限制单次滚轮事件的最大位移，防止某些鼠标一次滚动跳太远
   });
 
-  // 5. 初始化背景与后处理渲染器
+  // 5. 初始化背景与转场合成渲染器
   const backdrop = new SharedBackdrop({
     perlinTexture: perlinTex,
     dotPatternTexture: dotTex,
@@ -163,7 +163,7 @@ async function bootstrap() {
     edgeSoftness: 1.15,
   });
 
-  // 设置转场后处理参数
+  // 设置转场合成参数
   transition.setSmearStrength(0.42); // 运动模糊强度
   transition.setSmearLength(0.1); // 运动模糊长度
   transition.setFogWashStrength(0.52); // 雾化强度
@@ -186,7 +186,7 @@ async function bootstrap() {
     segments: timeline,
   });
 
-  // 将后处理渲染器设为引擎的主视图
+  // 将转场合成渲染器设为引擎的主视图
   engine.setView(transition);
 
   // 7. 绑定核心循环钩子

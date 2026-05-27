@@ -248,21 +248,11 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     earthBottomHud.addBinding(earthDebug.bottomHud, 'positionZ', { min: -8, max: 2, step: 0.01, label: '前后 Z' }).on('change', applyEarthDebug);
     earthBottomHud.addBinding(earthDebug.bottomHud, 'speed', { min: -4, max: 4, step: 0.01, label: '旋转倍率' }).on('change', applyEarthDebug);
 
-    const earthTextBloom = earthFolder.addFolder({ title: '文字辉光', expanded: false });
-    earthTextBloom.addBinding(earthDebug.stage, 'textBloomEnabled', { label: '启用' }).on('change', applyEarthDebug);
-    earthTextBloom.addBinding(earthDebug.stage, 'textBloomStrength', { min: 0, max: 8, step: 0.01, label: '强度' }).on('change', applyEarthDebug);
-    earthTextBloom.addBinding(earthDebug.stage, 'textBloomRadius', { min: 0, max: 24, step: 0.1, label: '半径' }).on('change', applyEarthDebug);
-    earthTextBloom.addBinding(earthDebug.stage, 'textBloomTint', { label: '颜色' }).on('change', applyEarthDebug);
-
-    const earthRingEdge = earthFolder.addFolder({ title: '环边框辉光', expanded: false });
+    const earthRingEdge = earthFolder.addFolder({ title: '环边框', expanded: false });
     earthRingEdge.addBinding(earthDebug.ringEdge, 'visible', { label: '显示边框' }).on('change', applyEarthDebug);
     earthRingEdge.addBinding(earthDebug.ringEdge, 'color', { label: '边框颜色' }).on('change', applyEarthDebug);
     earthRingEdge.addBinding(earthDebug.ringEdge, 'opacity', { min: 0, max: 1.5, step: 0.01, label: '边框透明度' }).on('change', applyEarthDebug);
     earthRingEdge.addBinding(earthDebug.ringEdge, 'lineWidth', { min: 0.2, max: 8, step: 0.1, label: '边框线宽' }).on('change', applyEarthDebug);
-    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomEnabled', { label: '启用辉光' }).on('change', applyEarthDebug);
-    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomStrength', { min: 0, max: 8, step: 0.01, label: '辉光强度' }).on('change', applyEarthDebug);
-    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomRadius', { min: 0, max: 24, step: 0.1, label: '辉光半径' }).on('change', applyEarthDebug);
-    earthRingEdge.addBinding(earthDebug.ringEdge, 'bloomTint', { label: '辉光颜色' }).on('change', applyEarthDebug);
 
     const earthGlobe = earthFolder.addFolder({ title: '地球材质', expanded: false });
     earthGlobe.addBinding(earthDebug.globe, 'bumpScale', { min: 0, max: 0.08, step: 0.0005, label: '凹凸强度' }).on('change', applyEarthDebug);

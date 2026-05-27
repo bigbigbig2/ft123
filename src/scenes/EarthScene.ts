@@ -3,7 +3,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { ModelScene } from './ModelScene';
-import type { SceneBase, ScenePostEffects, SceneScrollState } from './SceneBase';
+import type { SceneBase, SceneScrollState } from './SceneBase';
 import { createProceduralEarth } from './earth/createEarthModel';
 import {
   DEFAULT_EARTH_TIMELINE_CONFIG,
@@ -15,8 +15,6 @@ import { loadGLTF, loadTexture } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
 const EARTH_TEXTURE_ROOT = '/textures/earth';
-const EARTH_TEXT_BLOOM_LAYER = 10;
-const EARTH_RING_EDGE_BLOOM_LAYER = 11;
 const EARTH_BOTTOM_ROOT = '/textures/earth/bottom';
 const EARTH_BOTTOM_LAYERS = [
   { path: `${EARTH_BOTTOM_ROOT}/%E5%9C%881%E4%B8%8D%E5%8A%A8.png`, speed: 0 },
@@ -304,7 +302,6 @@ function createRingEdgeLines(root: THREE.Object3D, material: LineMaterial) {
     line.userData.isRingEdgeLine = true;
     line.renderOrder = 30;
     line.frustumCulled = false;
-    line.layers.enable(EARTH_RING_EDGE_BLOOM_LAYER);
     mesh.add(line);
     lines.push(line);
   }
@@ -383,22 +380,11 @@ function assignDebugData<T extends Record<string, unknown>>(target: T, source: T
   }
 }
 
-export interface EarthDebugStageState {
-  textBloomEnabled: boolean;
-  textBloomStrength: number;
-  textBloomRadius: number;
-  textBloomTint: string;
-}
-
 export interface EarthDebugRingEdgeState {
   visible: boolean;
   color: string;
   opacity: number;
   lineWidth: number;
-  bloomEnabled: boolean;
-  bloomStrength: number;
-  bloomRadius: number;
-  bloomTint: string;
 }
 
 export interface EarthDebugMaterialState {
@@ -546,7 +532,6 @@ export interface EarthDebugLightState {
 }
 
 export interface EarthDebugData {
-  stage: EarthDebugStageState;
   ringEdge: EarthDebugRingEdgeState;
   materials: EarthDebugMaterialState;
   motion: EarthDebugMotionState;
@@ -775,7 +760,6 @@ export async function createEarthScene() {
     middle: ringLayerNodes.middle?.rotation.y ?? 0,
     outer: ringLayerNodes.outer?.rotation.y ?? 0,
   };
-  text.scene.traverse((obj) => obj.layers.enable(EARTH_TEXT_BLOOM_LAYER));
   const textMaterials = normalizeText(text.scene); // 鑷姩鎻愬彇骞舵爣鍑嗗寲鏂囧瓧鏉愯川
 
   earth.group.scale.setScalar(1.2);
@@ -847,21 +831,11 @@ export async function createEarthScene() {
   };
 
   const debugData: EarthDebugData = {
-    stage: {
-      textBloomEnabled: true,
-      textBloomStrength: 0.5,
-      textBloomRadius: 0.3,
-      textBloomTint: '#d3e4e8',
-    },
     ringEdge: {
       visible: true,
       color: '#bfe8ff',
       opacity: 0.95,
       lineWidth: 1.2,
-      bloomEnabled: true,
-      bloomStrength: 0.2,
-      bloomRadius: 0.1,
-      bloomTint: '#bfe8ff',
     },
     materials: {
       textColor: '#ffffff',
@@ -1397,29 +1371,7 @@ export async function createEarthScene() {
     });
   };
 
-  const getPostEffects = (): ScenePostEffects => ({
-    bloom: [
-      {
-        enabled: debugData.stage.textBloomEnabled && ringTextVisible,
-        layer: EARTH_TEXT_BLOOM_LAYER,
-        strength: debugData.stage.textBloomStrength,
-        radius: debugData.stage.textBloomRadius,
-        tint: debugData.stage.textBloomTint,
-        resolutionScale: 0.5,
-      },
-      {
-        enabled: debugData.ringEdge.bloomEnabled && debugData.ringEdge.visible && ringGroup.visible,
-        layer: EARTH_RING_EDGE_BLOOM_LAYER,
-        strength: debugData.ringEdge.bloomStrength,
-        radius: debugData.ringEdge.bloomRadius,
-        tint: debugData.ringEdge.bloomTint,
-        resolutionScale: 1,
-      },
-    ],
-  });
-
-  const earthScene = scene as ModelScene & EarthSceneDebugControls & { getPostEffects(): ScenePostEffects };
-  earthScene.getPostEffects = getPostEffects;
+  const earthScene = scene as ModelScene & EarthSceneDebugControls;
   earthScene.getEarthDebugData = () => debugData;
   earthScene.applyEarthDebug = () => {
     applyResolvedState(lastSourceState ?? createFallbackScrollState());
