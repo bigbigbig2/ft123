@@ -11,9 +11,10 @@ import {
   type EarthTimeline,
 } from './earth/earthTimeline';
 import { moveBoxCenterTo, normalizeText } from './earth/earthSceneUtils';
-import { loadGLTF } from '../utils/loaders';
+import { loadGLTF, loadTexture } from '../utils/loaders';
 
 const EARTH_MODEL_ROOT = '/models/%E5%9C%B0%E7%90%83%E9%A1%B5%E9%9D%A2%E6%A8%A1%E5%9E%8B';
+const EARTH_TEXTURE_ROOT = '/textures/earth';
 const EARTH_TEXT_BLOOM_LAYER = 10;
 const EARTH_RING_EDGE_BLOOM_LAYER = 11;
 const EARTH_BOTTOM_ROOT = '/textures/earth/bottom';
@@ -31,8 +32,20 @@ const STAGE_RING_SCALE_END = 1;
 const ROOT_INTRO_ROT_Y_START = -0.22;
 const ROOT_INTRO_ROT_Y_END = 0.08;
 const RING_LAYER_KEYS = ['inner', 'middle', 'outer'] as const;
+const RING_TEXTURE_FACE_KEYS = ['face3', 'face8', 'face9'] as const;
 
 type EarthRingLayerKey = typeof RING_LAYER_KEYS[number];
+type EarthRingTextureFaceKey = typeof RING_TEXTURE_FACE_KEYS[number];
+
+interface RingTextureUvBounds {
+  min: [number, number];
+  size: [number, number];
+}
+
+interface RingTexturePositionBounds {
+  min: [number, number];
+  size: [number, number];
+}
 
 /** 鍒涘缓瑁呴グ鐜殑鏉愯川锛氫娇鐢?PhysicalMaterial 妯℃嫙閫忔槑鍙戝厜璐ㄦ劅 */
 function createRingUiMaterial() {
@@ -48,6 +61,182 @@ function createRingUiMaterial() {
     depthWrite: false,
     toneMapped: false,
   });
+}
+
+interface RingTextureMaterialOptions {
+  baseColor: THREE.ColorRepresentation;
+  tintColor: THREE.ColorRepresentation;
+  panelOpacity: number;
+  textureOpacity: number;
+  brightness: number;
+  blackCutoff: number;
+  blackFeather: number;
+  uvBounds: RingTextureUvBounds;
+  positionBounds: RingTexturePositionBounds;
+  uvFitEnabled: boolean;
+  uvOffset: [number, number];
+  uvScale: [number, number];
+  uvRotation: number;
+  uvFlipX: boolean;
+  uvFlipY: boolean;
+  uvSwap: boolean;
+}
+
+function createRingTextureMaterial(
+  texture: THREE.Texture,
+  name: string,
+  options: RingTextureMaterialOptions,
+) {
+  texture.flipY = false;
+  texture.needsUpdate = true;
+
+  return new THREE.ShaderMaterial({
+    name,
+    uniforms: {
+      uMap: { value: texture },
+      uOpacity: { value: options.textureOpacity },
+      uBaseColor: { value: new THREE.Color(options.baseColor) },
+      uTintColor: { value: new THREE.Color(options.tintColor) },
+      uPanelOpacity: { value: options.panelOpacity },
+      uBrightness: { value: options.brightness },
+      uBlackCutoff: { value: options.blackCutoff },
+      uBlackFeather: { value: options.blackFeather },
+      uUvBoundsMin: { value: new THREE.Vector2(options.uvBounds.min[0], options.uvBounds.min[1]) },
+      uUvBoundsSize: { value: new THREE.Vector2(options.uvBounds.size[0], options.uvBounds.size[1]) },
+      uPositionBoundsMin: { value: new THREE.Vector2(options.positionBounds.min[0], options.positionBounds.min[1]) },
+      uPositionBoundsSize: { value: new THREE.Vector2(options.positionBounds.size[0], options.positionBounds.size[1]) },
+      uUvFitEnabled: { value: options.uvFitEnabled ? 1 : 0 },
+      uUvOffset: { value: new THREE.Vector2(options.uvOffset[0], options.uvOffset[1]) },
+      uUvScale: { value: new THREE.Vector2(options.uvScale[0], options.uvScale[1]) },
+      uUvRotation: { value: options.uvRotation },
+      uUvFlip: { value: new THREE.Vector2(options.uvFlipX ? -1 : 1, options.uvFlipY ? -1 : 1) },
+      uUvSwap: { value: options.uvSwap ? 1 : 0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec2 vLocalPlane;
+
+      void main() {
+        vUv = uv;
+        vLocalPlane = position.xz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uMap;
+      uniform float uOpacity;
+      uniform vec3 uBaseColor;
+      uniform vec3 uTintColor;
+      uniform float uPanelOpacity;
+      uniform float uBrightness;
+      uniform float uBlackCutoff;
+      uniform float uBlackFeather;
+      uniform vec2 uUvBoundsMin;
+      uniform vec2 uUvBoundsSize;
+      uniform vec2 uPositionBoundsMin;
+      uniform vec2 uPositionBoundsSize;
+      uniform float uUvFitEnabled;
+      uniform vec2 uUvOffset;
+      uniform vec2 uUvScale;
+      uniform float uUvRotation;
+      uniform vec2 uUvFlip;
+      uniform float uUvSwap;
+
+      varying vec2 vUv;
+      varying vec2 vLocalPlane;
+
+      vec2 transformRingTextureUv(vec2 uv) {
+        vec2 fittedUv = (vLocalPlane - uPositionBoundsMin) / max(uPositionBoundsSize, vec2(0.0001));
+        vec2 sourceUv = mix(uv, fittedUv, uUvFitEnabled);
+        vec2 mappedUv = uUvSwap > 0.5 ? sourceUv.yx : sourceUv;
+        vec2 centered = (mappedUv - 0.5) * uUvFlip;
+        float s = sin(uUvRotation);
+        float c = cos(uUvRotation);
+        centered = mat2(c, -s, s, c) * centered;
+        return centered * uUvScale + 0.5 + uUvOffset;
+      }
+
+      void main() {
+        vec2 textureUv = transformRingTextureUv(vUv);
+        vec4 texel = texture2D(uMap, textureUv);
+        float luminance = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
+        float highlight = smoothstep(uBlackCutoff, uBlackCutoff + uBlackFeather, luminance);
+        vec3 textureColor = texel.rgb * uBrightness * uTintColor;
+        textureColor += highlight * uTintColor * 0.16;
+        vec3 color = mix(uBaseColor, textureColor, clamp(uOpacity, 0.0, 1.0));
+        float alpha = clamp(uPanelOpacity + texel.a * uOpacity, 0.0, 1.0);
+
+        gl_FragColor = vec4(color, alpha);
+        #include <colorspace_fragment>
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: true,
+    toneMapped: false,
+  });
+}
+
+function getRingFaceMesh(root: THREE.Object3D, nodeName: EarthRingTextureFaceKey) {
+  const mesh = root.getObjectByName(nodeName) as THREE.Mesh | undefined;
+  return mesh?.isMesh ? mesh : null;
+}
+
+function getMeshUvBounds(mesh: THREE.Mesh | null): RingTextureUvBounds {
+  const uv = mesh?.geometry?.getAttribute('uv');
+  if (!uv || uv.count <= 0) return { min: [0, 0], size: [1, 1] };
+
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+
+  for (let i = 0; i < uv.count; i += 1) {
+    const u = uv.getX(i);
+    const v = uv.getY(i);
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    minV = Math.min(minV, v);
+    maxV = Math.max(maxV, v);
+  }
+
+  if (!Number.isFinite(minU) || !Number.isFinite(minV)) {
+    return { min: [0, 0], size: [1, 1] };
+  }
+
+  return {
+    min: [minU, minV],
+    size: [Math.max(maxU - minU, 0.0001), Math.max(maxV - minV, 0.0001)],
+  };
+}
+
+function getMeshPositionBounds(mesh: THREE.Mesh | null): RingTexturePositionBounds {
+  const position = mesh?.geometry?.getAttribute('position');
+  if (!position || position.count <= 0) return { min: [0, 0], size: [1, 1] };
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+
+  for (let i = 0; i < position.count; i += 1) {
+    const x = position.getX(i);
+    const z = position.getZ(i);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
+    return { min: [0, 0], size: [1, 1] };
+  }
+
+  return {
+    min: [minX, minZ],
+    size: [Math.max(maxX - minX, 0.0001), Math.max(maxZ - minZ, 0.0001)],
+  };
 }
 
 function isRingTopFace(obj: THREE.Object3D) {
@@ -75,6 +264,19 @@ function setRingSurfaceMaterials(
     if (Array.isArray(oldMaterial)) oldMaterial.forEach((mat) => mat.dispose());
     else oldMaterial?.dispose?.();
   });
+}
+
+function setRingFaceTextureMaterial(
+  root: THREE.Object3D,
+  nodeName: EarthRingTextureFaceKey,
+  material: THREE.Material,
+) {
+  const mesh = getRingFaceMesh(root, nodeName);
+  if (!mesh) return;
+
+  mesh.material = material;
+  mesh.renderOrder = 18;
+  mesh.frustumCulled = false;
 }
 
 function createRingEdgeLines(root: THREE.Object3D, material: LineMaterial) {
@@ -206,6 +408,41 @@ export interface EarthDebugMaterialState {
   ringOpacity: number;
   ringEmissiveColor: string;
   ringEmissiveIntensity: number;
+  ringTexturePanelOpacity: number;
+  ringTexture1Opacity: number;
+  ringTexture1Brightness: number;
+  ringTexture2Opacity: number;
+  ringTexture2Brightness: number;
+  ringTextureFace3Visible: boolean;
+  ringTextureFace3UvFitEnabled: boolean;
+  ringTextureFace3UvOffsetX: number;
+  ringTextureFace3UvOffsetY: number;
+  ringTextureFace3UvScaleX: number;
+  ringTextureFace3UvScaleY: number;
+  ringTextureFace3UvRotation: number;
+  ringTextureFace3UvFlipX: boolean;
+  ringTextureFace3UvFlipY: boolean;
+  ringTextureFace3UvSwap: boolean;
+  ringTextureFace8Visible: boolean;
+  ringTextureFace8UvFitEnabled: boolean;
+  ringTextureFace8UvOffsetX: number;
+  ringTextureFace8UvOffsetY: number;
+  ringTextureFace8UvScaleX: number;
+  ringTextureFace8UvScaleY: number;
+  ringTextureFace8UvRotation: number;
+  ringTextureFace8UvFlipX: boolean;
+  ringTextureFace8UvFlipY: boolean;
+  ringTextureFace8UvSwap: boolean;
+  ringTextureFace9Visible: boolean;
+  ringTextureFace9UvFitEnabled: boolean;
+  ringTextureFace9UvOffsetX: number;
+  ringTextureFace9UvOffsetY: number;
+  ringTextureFace9UvScaleX: number;
+  ringTextureFace9UvScaleY: number;
+  ringTextureFace9UvRotation: number;
+  ringTextureFace9UvFlipX: boolean;
+  ringTextureFace9UvFlipY: boolean;
+  ringTextureFace9UvSwap: boolean;
   sideColor: string;
   sideOpacity: number;
   sideEmissiveColor: string;
@@ -401,11 +638,19 @@ export async function createEarthScene() {
   });
 
   // 1. 骞跺彂鍔犺浇鎵€鏈夎祫婧?
-  const [earth, ring, text, bottomHudTextures] = await Promise.all([
+  const [earth, ring, text, bottomHudTextures, ringTexture1, ringTexture2] = await Promise.all([
     createProceduralEarth(), // 绋嬪簭鍖栫敓鎴愮殑鍦扮悆锛堝寘鍚珮绾?Shader 鏉愯川锛?
     loadGLTF(`${EARTH_MODEL_ROOT}/huan2.glb`),
     loadGLTF(`${EARTH_MODEL_ROOT}/wenzi.gltf`),
     Promise.all(EARTH_BOTTOM_LAYERS.map((layer) => new THREE.TextureLoader().loadAsync(layer.path))),
+    loadTexture(`${EARTH_TEXTURE_ROOT}/1.png`, {
+      colorSpace: THREE.SRGBColorSpace,
+      wrap: THREE.ClampToEdgeWrapping,
+    }),
+    loadTexture(`${EARTH_TEXTURE_ROOT}/2.png`, {
+      colorSpace: THREE.SRGBColorSpace,
+      wrap: THREE.ClampToEdgeWrapping,
+    }),
   ]);
 
   // 2. 鐏厜璋冩暣锛氱Щ闄ら粯璁ゅ厜鐓э紝娣诲姞鏍规嵁鍦扮悆澶槼鏂瑰悜鍚屾鐨勫钩琛屽厜
@@ -438,6 +683,70 @@ export async function createEarthScene() {
   const ringMaterial = createRingUiMaterial();
   const ringSideMaterial = createRingUiMaterial();
   setRingSurfaceMaterials(ring.scene, ringMaterial, ringSideMaterial);
+  const ringTextureFaceMeshes: Record<EarthRingTextureFaceKey, THREE.Mesh | null> = {
+    face3: getRingFaceMesh(ring.scene, 'face3'),
+    face8: getRingFaceMesh(ring.scene, 'face8'),
+    face9: getRingFaceMesh(ring.scene, 'face9'),
+  };
+  const ringTextureFaceMaterials: Record<EarthRingTextureFaceKey, THREE.ShaderMaterial> = {
+    face3: createRingTextureMaterial(ringTexture1, 'EarthRingFace3StripeTextureMaterial', {
+      baseColor: '#9fdfff',
+      tintColor: '#c7f5ff',
+      panelOpacity: 0.18,
+      textureOpacity: 0,
+      brightness: 1.65,
+      blackCutoff: 0.12,
+      blackFeather: 0.32,
+      uvBounds: getMeshUvBounds(ringTextureFaceMeshes.face3),
+      positionBounds: getMeshPositionBounds(ringTextureFaceMeshes.face3),
+      uvFitEnabled: true,
+      uvOffset: [0, 0],
+      uvScale: [1, 1],
+      uvRotation: 0,
+      uvFlipX: false,
+      uvFlipY: false,
+      uvSwap: false,
+    }),
+    face8: createRingTextureMaterial(ringTexture2, 'EarthRingFace8ImageTextureMaterial', {
+      baseColor: '#7ed8ff',
+      tintColor: '#ffffff',
+      panelOpacity: 0.2,
+      textureOpacity: 0,
+      brightness: 1.42,
+      blackCutoff: 0.08,
+      blackFeather: 0.22,
+      uvBounds: getMeshUvBounds(ringTextureFaceMeshes.face8),
+      positionBounds: getMeshPositionBounds(ringTextureFaceMeshes.face8),
+      uvFitEnabled: true,
+      uvOffset: [0, 0],
+      uvScale: [1, 1],
+      uvRotation: 0,
+      uvFlipX: false,
+      uvFlipY: false,
+      uvSwap: false,
+    }),
+    face9: createRingTextureMaterial(ringTexture1, 'EarthRingFace9StripeTextureMaterial', {
+      baseColor: '#9fdfff',
+      tintColor: '#c7f5ff',
+      panelOpacity: 0.18,
+      textureOpacity: 0,
+      brightness: 1.65,
+      blackCutoff: 0.12,
+      blackFeather: 0.32,
+      uvBounds: getMeshUvBounds(ringTextureFaceMeshes.face9),
+      positionBounds: getMeshPositionBounds(ringTextureFaceMeshes.face9),
+      uvFitEnabled: true,
+      uvOffset: [0, 0],
+      uvScale: [1, 1],
+      uvRotation: 0,
+      uvFlipX: false,
+      uvFlipY: false,
+      uvSwap: false,
+    }),
+  };
+  for (const faceKey of RING_TEXTURE_FACE_KEYS) {
+    setRingFaceTextureMaterial(ring.scene, faceKey, ringTextureFaceMaterials[faceKey]);
+  }
   const ringEdgeMaterial = new LineMaterial({
     color: '#9ff8ff',
     transparent: true,
@@ -561,6 +870,41 @@ export async function createEarthScene() {
       ringOpacity: 0.63,
       ringEmissiveColor: '#000000',
       ringEmissiveIntensity: 0,
+      ringTexturePanelOpacity: 0.18,
+      ringTexture1Opacity: 0.78,
+      ringTexture1Brightness: 1.65,
+      ringTexture2Opacity: 0.86,
+      ringTexture2Brightness: 1.42,
+      ringTextureFace3Visible: false,
+      ringTextureFace3UvFitEnabled: true,
+      ringTextureFace3UvOffsetX: 0,
+      ringTextureFace3UvOffsetY: 0,
+      ringTextureFace3UvScaleX: 1,
+      ringTextureFace3UvScaleY: 1,
+      ringTextureFace3UvRotation: 0,
+      ringTextureFace3UvFlipX: false,
+      ringTextureFace3UvFlipY: false,
+      ringTextureFace3UvSwap: false,
+      ringTextureFace8Visible: false,
+      ringTextureFace8UvFitEnabled: true,
+      ringTextureFace8UvOffsetX: 0,
+      ringTextureFace8UvOffsetY: 0,
+      ringTextureFace8UvScaleX: 1,
+      ringTextureFace8UvScaleY: 1,
+      ringTextureFace8UvRotation: 0,
+      ringTextureFace8UvFlipX: false,
+      ringTextureFace8UvFlipY: false,
+      ringTextureFace8UvSwap: false,
+      ringTextureFace9Visible: false,
+      ringTextureFace9UvFitEnabled: true,
+      ringTextureFace9UvOffsetX: 0,
+      ringTextureFace9UvOffsetY: 0,
+      ringTextureFace9UvScaleX: 1,
+      ringTextureFace9UvScaleY: 1,
+      ringTextureFace9UvRotation: 0,
+      ringTextureFace9UvFlipX: false,
+      ringTextureFace9UvFlipY: false,
+      ringTextureFace9UvSwap: false,
       sideColor: '#c0d4df',
       sideOpacity: 0.43,
       sideEmissiveColor: '#000000',
@@ -678,12 +1022,91 @@ export async function createEarthScene() {
     outer: debugData.motion.ringLayers.outer.initialRotationY,
   };
 
+  function applyRingTextureUvSettings(
+    material: THREE.ShaderMaterial,
+    fitEnabled: boolean,
+    offsetX: number,
+    offsetY: number,
+    scaleX: number,
+    scaleY: number,
+    rotation: number,
+    flipX: boolean,
+    flipY: boolean,
+    swap: boolean,
+  ) {
+    material.uniforms.uUvFitEnabled.value = fitEnabled ? 1 : 0;
+    material.uniforms.uUvOffset.value.set(offsetX, offsetY);
+    material.uniforms.uUvScale.value.set(scaleX, scaleY);
+    material.uniforms.uUvRotation.value = rotation;
+    material.uniforms.uUvFlip.value.set(flipX ? -1 : 1, flipY ? -1 : 1);
+    material.uniforms.uUvSwap.value = swap ? 1 : 0;
+  }
+
+  function getRingTextureFaceOpacity(faceKey: EarthRingTextureFaceKey) {
+    switch (faceKey) {
+      case 'face3':
+        return debugData.materials.ringTextureFace3Visible ? debugData.materials.ringTexture1Opacity : 0;
+      case 'face8':
+        return debugData.materials.ringTextureFace8Visible ? debugData.materials.ringTexture2Opacity : 0;
+      case 'face9':
+        return debugData.materials.ringTextureFace9Visible ? debugData.materials.ringTexture1Opacity : 0;
+    }
+  }
+
   function applyMaterialDebugSettings() {
     ringMaterial.color.set(debugData.materials.ringColor);
     ringMaterial.opacity = debugData.materials.ringOpacity;
     ringMaterial.emissive.set(debugData.materials.ringEmissiveColor);
     ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity;
     ringMaterial.needsUpdate = true;
+    ringTextureFaceMaterials.face3.uniforms.uOpacity.value = getRingTextureFaceOpacity('face3');
+    ringTextureFaceMaterials.face3.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity;
+    ringTextureFaceMaterials.face3.uniforms.uBrightness.value = debugData.materials.ringTexture1Brightness;
+    applyRingTextureUvSettings(
+      ringTextureFaceMaterials.face3,
+      debugData.materials.ringTextureFace3UvFitEnabled,
+      debugData.materials.ringTextureFace3UvOffsetX,
+      debugData.materials.ringTextureFace3UvOffsetY,
+      debugData.materials.ringTextureFace3UvScaleX,
+      debugData.materials.ringTextureFace3UvScaleY,
+      debugData.materials.ringTextureFace3UvRotation,
+      debugData.materials.ringTextureFace3UvFlipX,
+      debugData.materials.ringTextureFace3UvFlipY,
+      debugData.materials.ringTextureFace3UvSwap,
+    );
+    ringTextureFaceMaterials.face3.needsUpdate = true;
+    ringTextureFaceMaterials.face8.uniforms.uOpacity.value = getRingTextureFaceOpacity('face8');
+    ringTextureFaceMaterials.face8.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity;
+    ringTextureFaceMaterials.face8.uniforms.uBrightness.value = debugData.materials.ringTexture2Brightness;
+    applyRingTextureUvSettings(
+      ringTextureFaceMaterials.face8,
+      debugData.materials.ringTextureFace8UvFitEnabled,
+      debugData.materials.ringTextureFace8UvOffsetX,
+      debugData.materials.ringTextureFace8UvOffsetY,
+      debugData.materials.ringTextureFace8UvScaleX,
+      debugData.materials.ringTextureFace8UvScaleY,
+      debugData.materials.ringTextureFace8UvRotation,
+      debugData.materials.ringTextureFace8UvFlipX,
+      debugData.materials.ringTextureFace8UvFlipY,
+      debugData.materials.ringTextureFace8UvSwap,
+    );
+    ringTextureFaceMaterials.face8.needsUpdate = true;
+    ringTextureFaceMaterials.face9.uniforms.uOpacity.value = getRingTextureFaceOpacity('face9');
+    ringTextureFaceMaterials.face9.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity;
+    ringTextureFaceMaterials.face9.uniforms.uBrightness.value = debugData.materials.ringTexture1Brightness;
+    applyRingTextureUvSettings(
+      ringTextureFaceMaterials.face9,
+      debugData.materials.ringTextureFace9UvFitEnabled,
+      debugData.materials.ringTextureFace9UvOffsetX,
+      debugData.materials.ringTextureFace9UvOffsetY,
+      debugData.materials.ringTextureFace9UvScaleX,
+      debugData.materials.ringTextureFace9UvScaleY,
+      debugData.materials.ringTextureFace9UvRotation,
+      debugData.materials.ringTextureFace9UvFlipX,
+      debugData.materials.ringTextureFace9UvFlipY,
+      debugData.materials.ringTextureFace9UvSwap,
+    );
+    ringTextureFaceMaterials.face9.needsUpdate = true;
 
     ringSideMaterial.color.set(debugData.materials.sideColor);
     ringSideMaterial.opacity = debugData.materials.sideOpacity;
@@ -892,6 +1315,12 @@ export async function createEarthScene() {
 
     // 鍔ㄦ€佽皟鏁存潗璐ㄥ弬鏁帮細缁撳悎 staging 鍜?focus锛堣浆鍦烘贩鍚堝害锛?
     ringMaterial.opacity = debugData.materials.ringOpacity * staging * focus;
+    ringTextureFaceMaterials.face3.uniforms.uOpacity.value = getRingTextureFaceOpacity('face3') * staging * focus;
+    ringTextureFaceMaterials.face3.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity * staging * focus;
+    ringTextureFaceMaterials.face8.uniforms.uOpacity.value = getRingTextureFaceOpacity('face8') * staging * focus;
+    ringTextureFaceMaterials.face8.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity * staging * focus;
+    ringTextureFaceMaterials.face9.uniforms.uOpacity.value = getRingTextureFaceOpacity('face9') * staging * focus;
+    ringTextureFaceMaterials.face9.uniforms.uPanelOpacity.value = debugData.materials.ringTexturePanelOpacity * staging * focus;
     ringMaterial.emissiveIntensity = debugData.materials.ringEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
     ringSideMaterial.opacity = debugData.materials.sideOpacity * staging * focus;
     ringSideMaterial.emissiveIntensity = debugData.materials.sideEmissiveIntensity * THREE.MathUtils.lerp(0.35, 1, staging);
