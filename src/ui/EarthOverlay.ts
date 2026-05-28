@@ -21,6 +21,7 @@ function formatPx(value: number) {
 interface EarthOverlayOptions {
   brandStartProgress?: number;
   brandEnabled?: boolean;
+  brandVisible?: () => boolean;
 }
 
 type TextRole = 'title' | 'phase' | 'copy';
@@ -86,6 +87,7 @@ export class EarthOverlay {
   private readonly brandStartProgress: number;
   private readonly brandElement: HTMLElement | null;
   private readonly brandEnabled: boolean;
+  private readonly brandVisible: (() => boolean) | null;
   private readonly brandVideo: HTMLVideoElement | null;
   private readonly titleLine: TextLine | null;
   private readonly phaseLine: TextLine | null;
@@ -99,6 +101,7 @@ export class EarthOverlay {
     this.brandStartProgress = opts.brandStartProgress ?? 0;
     this.brandElement = this.element?.querySelector<HTMLElement>('.earth-overlay__brand') ?? null;
     this.brandEnabled = opts.brandEnabled ?? !!this.brandElement;
+    this.brandVisible = opts.brandVisible ?? null;
     this.brandVideo = this.element?.querySelector<HTMLVideoElement>('.earth-overlay__brand-video') ?? null;
     this.titleLine = this.prepareTextLine('.earth-overlay__title', 'title');
     this.phaseLine = this.prepareTextLine('.earth-overlay__phase', 'phase');
@@ -111,9 +114,7 @@ export class EarthOverlay {
     const focus = clamp01(state?.focus ?? 0);
     const local = clamp01(state?.sceneProgress ?? 0);
     const global = clamp01(frame?.globalProgress ?? 0);
-    const brand = this.brandEnabled
-      ? smoothstep(this.brandStartProgress, this.brandStartProgress + 0.035, global)
-      : 0;
+    const brand = this.getBrandProgress(global);
     const heading = focus * smoothstep(0.46, 0.7, local);
     const frameOpacity = focus * smoothstep(0.36, 0.66, local);
     const copy = focus * smoothstep(0.64, 0.88, local);
@@ -131,6 +132,12 @@ export class EarthOverlay {
       const lineStart = index * 0.2;
       this.revealLine(line, copy, lineStart, lineStart + 0.58);
     });
+  }
+
+  private getBrandProgress(global: number) {
+    if (!this.brandEnabled) return 0;
+    if (this.brandVisible) return this.brandVisible() ? 1 : 0;
+    return smoothstep(this.brandStartProgress, this.brandStartProgress + 0.035, global);
   }
 
   private prepareTextLine(selector: string, role: TextRole): TextLine | null {

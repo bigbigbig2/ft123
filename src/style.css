@@ -103,25 +103,22 @@ body::-webkit-scrollbar {
   pointer-events: none;
   opacity: var(--intro-video-overlay-progress);
   color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.46), 0 0 26px rgba(167, 210, 255, 0.34);
+  text-shadow:
+    0 1px 2px rgba(14, 31, 55, 0.82),
+    0 0 10px rgba(255, 255, 255, 0.48),
+    0 0 22px rgba(143, 196, 255, 0.36);
 }
 
-.intro-video-overlay__brand {
+.intro-video-overlay::before {
+  content: '';
   position: absolute;
-  top: clamp(34px, 4.5vh, 58px);
-  left: clamp(36px, 4.8vw, 78px);
-  font-size: clamp(34px, 3.4vw, 54px);
-  font-weight: 300;
-  letter-spacing: 0.09em;
-  line-height: 1.1;
-  opacity: 0;
-  transform: translate3d(0, -12px, 0);
-  transition: opacity 520ms ease-out, transform 700ms cubic-bezier(0.18, 0.9, 0.24, 1);
-}
-
-.intro-video-overlay.is-visible .intro-video-overlay__brand {
-  opacity: 0.96;
-  transform: translate3d(0, 0, 0);
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(10, 28, 54, 0.22) 0%, rgba(14, 38, 70, 0.09) 22%, transparent 43%),
+    linear-gradient(270deg, rgba(10, 28, 54, 0.2) 0%, rgba(14, 38, 70, 0.08) 23%, transparent 44%),
+    linear-gradient(180deg, rgba(8, 25, 52, 0.11) 0%, transparent 24%, transparent 78%, rgba(8, 25, 52, 0.07) 100%);
 }
 
 .intro-video-overlay__milestone {
@@ -129,6 +126,7 @@ body::-webkit-scrollbar {
   --milestone-x: 0px;
   --milestone-y: 0px;
   position: absolute;
+  z-index: 1;
   width: min(420px, 34vw);
   opacity: 0;
   transform: translate3d(var(--milestone-x), var(--milestone-y), 0);
@@ -163,16 +161,18 @@ body::-webkit-scrollbar {
   --milestone-delay: 340ms;
   --milestone-x: 28px;
   --milestone-y: 10px;
-  right: clamp(80px, 9vw, 170px);
+  right: clamp(58px, 7vw, 132px);
   top: 41%;
   text-align: right;
 }
 
 .intro-video-overlay__year {
   font-size: clamp(28px, 2.2vw, 38px);
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: 0.08em;
   line-height: 1.1;
+  color: rgba(255, 255, 255, 0.96);
+  -webkit-text-stroke: 0.3px rgba(25, 49, 78, 0.55);
 }
 
 .intro-video-overlay__year span {
@@ -184,8 +184,10 @@ body::-webkit-scrollbar {
   width: 100%;
   height: 1px;
   margin: 8px 0 10px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.86), transparent);
-  box-shadow: 0 0 12px rgba(191, 224, 255, 0.46);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.92), transparent);
+  box-shadow:
+    0 1px 2px rgba(15, 34, 58, 0.62),
+    0 0 12px rgba(191, 224, 255, 0.5);
 }
 
 .intro-video-overlay__milestone--right-top .intro-video-overlay__line,
@@ -199,10 +201,14 @@ body::-webkit-scrollbar {
 
 .intro-video-overlay__milestone p {
   font-size: clamp(12px, 0.88vw, 15px);
-  font-weight: 400;
+  font-weight: 550;
   line-height: 1.75;
   letter-spacing: 0.04em;
-  opacity: 0.72;
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 0.94;
+  text-shadow:
+    0 1px 2px rgba(13, 31, 55, 0.9),
+    0 0 9px rgba(165, 212, 255, 0.32);
 }
 
 .earth-overlay {
@@ -223,14 +229,17 @@ body::-webkit-scrollbar {
 .earth-overlay__brand {
   --brand-x: 4px;
   --brand-y: 4px;
-  --brand-width: 1216px;
-  --brand-shift-x: -324px;
-  --brand-shift-y: -283px;
+  --brand-width: 980px;
+  --brand-shift-x: -260px;
+  --brand-shift-y: -228px;
   position: absolute; 
   top: var(--brand-y);
   left: var(--brand-x);
   opacity: var(--earth-brand-opacity);
-  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.52)) drop-shadow(0 0 28px rgba(185, 220, 255, 0.36));
+  filter:
+    drop-shadow(0 1px 2px rgba(12, 30, 54, 0.72))
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.5))
+    drop-shadow(0 0 22px rgba(185, 220, 255, 0.34));
 }
 
 .earth-overlay__brand-video {
@@ -342,9 +351,9 @@ body::-webkit-scrollbar {
   .earth-overlay__brand {
     --brand-x: 4px;
     --brand-y: 4px;
-    --brand-width: 896px;
-    --brand-shift-x: -276px;
-    --brand-shift-y: -218px;
+    --brand-width: 740px;
+    --brand-shift-x: -228px;
+    --brand-shift-y: -180px;
   }
 
   .earth-overlay__brand-video {
@@ -362,11 +371,6 @@ body::-webkit-scrollbar {
 }
 
 @media (max-width: 600px) {
-  .intro-video-overlay__brand {
-    left: 24px;
-    font-size: 28px;
-  }
-
   .intro-video-overlay__milestone {
     width: calc(100vw - 48px);
     left: 24px;
@@ -389,9 +393,9 @@ body::-webkit-scrollbar {
   .earth-overlay__brand {
     --brand-x: 4px;
     --brand-y: 4px;
-    --brand-width: 672px;
-    --brand-shift-x: -206px;
-    --brand-shift-y: -163px;
+    --brand-width: 540px;
+    --brand-shift-x: -166px;
+    --brand-shift-y: -131px;
   }
 
   .earth-overlay__brand-video {

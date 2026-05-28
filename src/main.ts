@@ -187,10 +187,9 @@ async function bootstrap() {
 
   // 6. UI 与 调试面板
   const introSegment = timeline.find((segment) => segment.type === 'scene' && segment.sceneName === 'intro-video');
-  const brandStartProgress = introSegment
-    ? introSegment.start + (introSegment.end - introSegment.start) * 0.5
-    : 0;
-  const earthOverlay = new EarthOverlay(earthOverlayElement, { brandStartProgress });
+  const earthOverlay = new EarthOverlay(earthOverlayElement, {
+    brandVisible: () => videoScene.getVideoDebugData().status.currentIndex >= 2,
+  });
   const introVideoOverlay = new IntroVideoOverlay(introVideoOverlayElement, videoScene);
   const scene3Overlay = new EarthOverlay(scene3OverlayElement, { brandEnabled: false });
   const debugPanel = createDebugPanel({

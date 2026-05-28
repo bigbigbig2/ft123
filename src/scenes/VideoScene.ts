@@ -75,6 +75,8 @@ export class VideoScene implements SceneBase {
   };
   private wheelAccumulator = 0;
   private readonly wheelAdvanceThreshold = 280;
+  private readonly reverseSegmentEndGuard = 1 / 30;
+  private readonly finishSegmentEndGuard = 4 / 30;
   private wheelGestureHandler = (event: WheelEvent) => this.handleWheelGesture(event);
 
   constructor(opts: VideoSceneOptions) {
@@ -275,7 +277,19 @@ export class VideoScene implements SceneBase {
       return;
     }
 
-    if (this.video.currentTime >= segment.end) this.handleSegmentEnd();
+    if (this.video.currentTime >= this.getSegmentPlaybackEnd(segment)) this.handleSegmentEnd();
+  }
+
+  private getSegmentPlaybackEnd(segment: VideoSceneSegment) {
+    if (segment.next === 'finish') {
+      return Math.max(segment.start, segment.end - this.finishSegmentEndGuard);
+    }
+
+    if (segment.next === 'loop2' || segment.next === 'loop4') {
+      return Math.max(segment.start, segment.end - this.reverseSegmentEndGuard);
+    }
+
+    return segment.end;
   }
 
   private handleSegmentEnd() {
@@ -325,7 +339,7 @@ export class VideoScene implements SceneBase {
     if (this.finished) {
       if (deltaY >= 0) return;
       this.consumeWheelEvent(event);
-      if (deltaY < 0) this.accumulateWheel(-deltaY, () => this.seekToSegment(6));
+      this.accumulateWheel(-deltaY, () => this.seekToSegment(6));
       return;
     }
 
