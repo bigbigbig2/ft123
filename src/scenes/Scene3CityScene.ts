@@ -24,11 +24,13 @@ const VIDEO_CARD_BLACK_FEATHER = 0.14;
 const VIDEO_CARD_BRIGHTNESS = 1.36;
 const VIDEO_CARD_CONTRAST = 1.12;
 const MODEL_ANIMATION_END_PROGRESS = 0.78;
-const BUILD_ANIMATION_TRIM_START_RATIO = 1 / 5;
+const BUILD_ANIMATION_TRIM_START_RATIO = 1 / 10;
 const BUILD_ANIMATION_LOOP_START_PROGRESS = 1 / 3;
 const DRONE_ANIMATION_LOOP_START_PROGRESS = 1 / 2;
 const ANIMATION_LOOP_SPEED = 0.82;
 const ANIMATION_LOOP_ENTRY_BLEND_DURATION = 0.42;
+const SCENE3_ENTER_REVEAL_START = 0.06;
+const SCENE3_ENTER_REVEAL_END = 0.32;
 const VIDEO_CARD_START_PROGRESS = 0.46;
 const VIDEO_CARD_RESET_PROGRESS = VIDEO_CARD_START_PROGRESS - 0.12;
 
@@ -326,6 +328,7 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
   private droneRoot: THREE.Object3D | null = null;
   private droneTransformRoot: THREE.Group | null = null;
   private sceneActive = false;
+  private enterReveal = 0;
   private progress = 0;
   private videoCardsStarted = false;
 
@@ -396,6 +399,8 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
 
   setProgress(progress: number) {
     this.progress = THREE.MathUtils.clamp(progress, 0, 1);
+    this.enterReveal = THREE.MathUtils.smoothstep(this.progress, SCENE3_ENTER_REVEAL_START, SCENE3_ENTER_REVEAL_END);
+    this.applyStageDebug();
     this.applyAnimationProgress(0);
     this.syncVideoCardPlayback();
     this.applyVideoCardDebug();
@@ -1024,6 +1029,8 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
 
   private applyStageDebug() {
     const { stage } = this.debugData;
+    const reveal = this.enterReveal;
+    this.modelRoot.visible = reveal > 0.001;
     this.modelRoot.position.set(stage.positionX, stage.positionY, stage.positionZ);
     this.modelRoot.rotation.y = stage.rotationY;
     this.modelRoot.scale.setScalar(stage.scale);
