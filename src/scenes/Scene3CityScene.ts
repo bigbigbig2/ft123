@@ -24,6 +24,11 @@ const VIDEO_CARD_BLACK_FEATHER = 0.14;
 const VIDEO_CARD_BRIGHTNESS = 1.36;
 const VIDEO_CARD_CONTRAST = 1.12;
 const MODEL_ANIMATION_END_PROGRESS = 0.78;
+const BUILD_ANIMATION_TRIM_START_RATIO = 1 / 5;
+const BUILD_ANIMATION_LOOP_START_PROGRESS = 1 / 3;
+const DRONE_ANIMATION_LOOP_START_PROGRESS = 1 / 2;
+const ANIMATION_LOOP_SPEED = 0.82;
+const ANIMATION_LOOP_ENTRY_BLEND_DURATION = 0.42;
 const VIDEO_CARD_START_PROGRESS = 0.46;
 const VIDEO_CARD_RESET_PROGRESS = VIDEO_CARD_START_PROGRESS - 0.12;
 
@@ -126,6 +131,12 @@ interface Scene3AnimationController {
   mixer: THREE.AnimationMixer;
   actions: THREE.AnimationAction[];
   duration: number;
+  trimStartRatio: number;
+  loopStartProgress: number | null;
+  loopElapsed: number;
+  loopBlend: number;
+  loopActive: boolean;
+  loopSpeed: number;
 }
 
 type Scene3VideoCardSide = 'left' | 'right';
@@ -350,8 +361,13 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
 
     this.configureAsset(build.scene);
     this.configureAsset(this.droneRoot);
-    this.registerAnimations(build);
-    this.registerAnimations(drone);
+    this.registerAnimations(build, {
+      trimStartRatio: BUILD_ANIMATION_TRIM_START_RATIO,
+      loopStartProgress: BUILD_ANIMATION_LOOP_START_PROGRESS,
+    });
+    this.registerAnimations(drone, {
+      loopStartProgress: DRONE_ANIMATION_LOOP_START_PROGRESS,
+    });
     this.updateCityBounds(contentRoot, build.scene);
 
     this.attachAndFit(contentRoot, MODEL_DESIRED_SIZE);
@@ -380,14 +396,14 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
 
   setProgress(progress: number) {
     this.progress = THREE.MathUtils.clamp(progress, 0, 1);
-    this.applyAnimationProgress();
+    this.applyAnimationProgress(0);
     this.syncVideoCardPlayback();
     this.applyVideoCardDebug();
   }
 
   update(delta: number, elapsed: number) {
     super.update(delta, elapsed);
-    this.applyAnimationProgress();
+    this.applyAnimationProgress(delta);
   }
 
   dispose() {
@@ -637,7 +653,10 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     return frame;
   }
 
-  private registerAnimations(gltf: GLTF) {
+  private registerAnimations(
+    gltf: GLTF,
+    options: { trimStartRatio?: number; loopStartProgress?: number | null } = {},
+  ) {
     if (gltf.animations.length === 0) return;
 
     const mixer = new THREE.AnimationMixer(gltf.scene);
@@ -661,10 +680,16 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
       mixer,
       actions,
       duration,
+      trimStartRatio: options.trimStartRatio ?? 0,
+      loopStartProgress: options.loopStartProgress ?? null,
+      loopElapsed: 0,
+      loopBlend: 0,
+      loopActive: false,
+      loopSpeed: ANIMATION_LOOP_SPEED,
     });
   }
 
-  private applyAnimationProgress() {
+  private applyAnimationProgress(delta: number) {
     const animationProgress = THREE.MathUtils.clamp(
       this.progress / MODEL_ANIMATION_END_PROGRESS,
       0,
@@ -677,7 +702,40 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
         action.paused = false;
         action.enabled = true;
       }
-      controller.mixer.setTime(controller.duration * animationProgress);
+
+      const trimStartTime = controller.duration * controller.trimStartRatio;
+      const trimmedDuration = Math.max(0.0001, controller.duration - trimStartTime);
+      const scrollDrivenTime = trimStartTime + trimmedDuration * animationProgress;
+
+      if (
+        this.sceneActive &&
+        controller.loopStartProgress !== null &&
+        animationProgress >= controller.loopStartProgress
+      ) {
+        const loopStartTime = trimStartTime + trimmedDuration * controller.loopStartProgress;
+        const loopDuration = Math.max(0.0001, controller.duration - loopStartTime);
+
+        if (!controller.loopActive) {
+          controller.loopElapsed = THREE.MathUtils.clamp(scrollDrivenTime - loopStartTime, 0, loopDuration);
+          controller.loopBlend = 0;
+          controller.loopActive = true;
+        } else {
+          controller.loopElapsed += delta * controller.loopSpeed;
+          controller.loopBlend = Math.min(1, controller.loopBlend + delta / ANIMATION_LOOP_ENTRY_BLEND_DURATION);
+        }
+
+        const loopCycle = (controller.loopElapsed % (loopDuration * 2)) / (loopDuration * 2);
+        const loopPhase = (0.5 - Math.cos(loopCycle * Math.PI * 2) * 0.5) * loopDuration;
+        const loopTime = loopStartTime + loopPhase;
+        const blend = THREE.MathUtils.smoothstep(controller.loopBlend, 0, 1);
+        controller.mixer.setTime(THREE.MathUtils.lerp(scrollDrivenTime, loopTime, blend));
+        continue;
+      }
+
+      controller.loopActive = false;
+      controller.loopElapsed = 0;
+      controller.loopBlend = 0;
+      controller.mixer.setTime(scrollDrivenTime);
     }
   }
 

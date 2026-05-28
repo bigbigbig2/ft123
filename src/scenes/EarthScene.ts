@@ -924,7 +924,7 @@ export async function createEarthScene() {
       ringTextureFace9UvFlipY: false,
       ringTextureFace9UvSwap: false,
       sideColor: '#c0d4df',
-      sideOpacity: 0.43,
+      sideOpacity: 0.17,
       sideEmissiveColor: '#000000',
       sideEmissiveIntensity: 0,
     },
@@ -935,7 +935,7 @@ export async function createEarthScene() {
         initialRotationY: -2,
       },
       ringLayers: {
-        enabled: true,
+        enabled: false,
         inner: {
           autoRotateEnabled: true,
           autoRotateSpeed: -0.08,
