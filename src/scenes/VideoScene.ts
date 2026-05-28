@@ -13,6 +13,29 @@ export interface VideoSceneOptions {
   fit?: 'contain' | 'cover';
   muted?: boolean;
   loop?: boolean;
+  segments?: VideoSceneSegment[];
+}
+
+export interface VideoSceneSegment {
+  id: string;
+  start: number;
+  end: number;
+  mode: 'once' | 'loop';
+  next: 'auto' | 'scroll' | 'finish' | 'loop2' | 'loop4';
+}
+
+export interface VideoSceneDebugData {
+  status: {
+    currentSegment: string;
+    currentIndex: number;
+    currentTime: number;
+    duration: number;
+    waitingForScroll: boolean;
+    playingReverseClip: boolean;
+    finished: boolean;
+    active: boolean;
+  };
+  segments: VideoSceneSegment[];
 }
 
 /**
@@ -32,16 +55,39 @@ export class VideoScene implements SceneBase {
   private videoAspect = 16 / 9;
   private viewportAspect = 16 / 9;
   private backgroundDistance = 1450;
+  private segments: VideoSceneSegment[];
+  private currentSegmentIndex = 0;
+  private finished = false;
+  private active = false;
+  private hasMetadata = false;
+  private debugData: VideoSceneDebugData = {
+    status: {
+      currentSegment: '',
+      currentIndex: 0,
+      currentTime: 0,
+      duration: 0,
+      waitingForScroll: false,
+      playingReverseClip: false,
+      finished: false,
+      active: false,
+    },
+    segments: [],
+  };
+  private wheelAccumulator = 0;
+  private readonly wheelAdvanceThreshold = 280;
+  private wheelGestureHandler = (event: WheelEvent) => this.handleWheelGesture(event);
 
   constructor(opts: VideoSceneOptions) {
     this.name = opts.name ?? 'video';
     this.fit = opts.fit ?? 'cover';
+    this.segments = opts.segments ?? [];
+    this.debugData.segments = this.segments;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 2200);
 
     const video = document.createElement('video');
     video.src = opts.src;
-    video.loop = opts.loop ?? true;
+    video.loop = this.segments.length > 0 ? false : opts.loop ?? true;
     video.muted = opts.muted ?? true;
     video.playsInline = true;
     video.crossOrigin = 'anonymous';
@@ -49,10 +95,12 @@ export class VideoScene implements SceneBase {
     video.style.display = 'none';
 
     video.addEventListener('loadedmetadata', () => {
+      this.hasMetadata = true;
       if (video.videoWidth > 0 && video.videoHeight > 0) {
         this.videoAspect = video.videoWidth / video.videoHeight;
         this.updateUvTransform();
       }
+      if (this.segments.length > 0) this.seekToSegment(this.currentSegmentIndex);
     });
     this.video = video;
 
@@ -106,6 +154,8 @@ export class VideoScene implements SceneBase {
     video.addEventListener('loadeddata', markReady);
     video.addEventListener('canplay', markReady);
     video.addEventListener('error', markUnavailable);
+    video.addEventListener('ended', () => this.handleSegmentEnd());
+    window.addEventListener('wheel', this.wheelGestureHandler, { passive: false, capture: true });
 
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.material);
     this.mesh.frustumCulled = false;
@@ -115,7 +165,8 @@ export class VideoScene implements SceneBase {
   }
 
   setActive(active: boolean) {
-    if (active) this.video.play().catch(() => {});
+    this.active = active;
+    if (active && !this.finished) this.video.play().catch(() => {});
     else this.video.pause();
   }
 
@@ -128,7 +179,55 @@ export class VideoScene implements SceneBase {
   }
 
   update(_delta: number, _elapsed: number) {
+    this.updateSegmentPlayback(_delta);
     this.updateVideoPlaneTransform();
+  }
+
+  isFinished() {
+    return this.finished || this.segments.length === 0;
+  }
+
+  getCurrentSegment() {
+    return this.segments[this.currentSegmentIndex] ?? null;
+  }
+
+  getVideoDebugData() {
+    this.updateVideoDebugData();
+    return this.debugData;
+  }
+
+  applyVideoDebug() {
+    for (const segment of this.segments) {
+      if (segment.end <= segment.start) segment.end = segment.start + 1 / 30;
+    }
+
+    const segment = this.segments[this.currentSegmentIndex];
+    if (!segment) return;
+
+    if (this.video.currentTime < segment.start || this.video.currentTime >= segment.end) {
+      this.video.currentTime = segment.start;
+    }
+  }
+
+  restartVideoSequence() {
+    this.seekToSegment(0);
+    if (this.active) this.video.play().catch(() => {});
+  }
+
+  advanceVideoSegment() {
+    if (this.segments.length === 0) return;
+    if (this.currentSegmentIndex >= this.segments.length - 1) {
+      this.finished = true;
+      this.video.pause();
+      return;
+    }
+    this.seekToSegment(this.currentSegmentIndex + 1);
+    if (this.active) this.video.play().catch(() => {});
+  }
+
+  jumpToVideoSegment(index: number) {
+    this.seekToSegment(index);
+    if (this.active) this.video.play().catch(() => {});
   }
 
   setSize(width: number, height: number) {
@@ -165,7 +264,139 @@ export class VideoScene implements SceneBase {
     this.mesh.scale.set(width, height, 1);
   }
 
+  private updateSegmentPlayback(_delta: number) {
+    if (this.segments.length === 0 || this.finished || !this.hasMetadata) return;
+
+    const segment = this.segments[this.currentSegmentIndex];
+    if (!segment) return;
+
+    if (this.video.currentTime < segment.start - 0.08) {
+      this.video.currentTime = segment.start;
+      return;
+    }
+
+    if (this.video.currentTime >= segment.end) this.handleSegmentEnd();
+  }
+
+  private handleSegmentEnd() {
+    if (this.segments.length === 0 || this.finished) return;
+
+    const segment = this.segments[this.currentSegmentIndex];
+    if (!segment) return;
+
+    if (segment.mode === 'loop') {
+      this.video.currentTime = segment.start;
+      if (this.active) this.video.play().catch(() => {});
+      return;
+    }
+
+    if (segment.next === 'auto') {
+      this.seekToSegment(this.currentSegmentIndex + 1);
+      if (this.active) this.video.play().catch(() => {});
+      return;
+    }
+
+    if (segment.next === 'finish') {
+      this.finished = true;
+      this.video.pause();
+      return;
+    }
+
+    if (segment.next === 'loop2') {
+      this.seekToSegment(1);
+      if (this.active) this.video.play().catch(() => {});
+      return;
+    }
+
+    if (segment.next === 'loop4') {
+      this.seekToSegment(3);
+      if (this.active) this.video.play().catch(() => {});
+    }
+  }
+
+  private handleWheelGesture(event: WheelEvent) {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('.ft-debug-panel')) return;
+    if (!this.active || this.segments.length === 0) return;
+
+    const deltaY = event.deltaY;
+    const currentIndex = this.currentSegmentIndex;
+
+    if (this.finished) {
+      if (deltaY >= 0) return;
+      this.consumeWheelEvent(event);
+      if (deltaY < 0) this.accumulateWheel(-deltaY, () => this.seekToSegment(6));
+      return;
+    }
+
+    this.consumeWheelEvent(event);
+
+    if (currentIndex === 1) {
+      if (deltaY > 0) this.accumulateWheel(deltaY, () => this.seekToSegment(2));
+      else this.decayWheelAccumulator();
+      return;
+    }
+
+    if (currentIndex === 3) {
+      if (deltaY > 0) {
+        this.accumulateWheel(deltaY, () => this.seekToSegment(4));
+      } else if (deltaY < 0) {
+        this.accumulateWheel(-deltaY, () => this.seekToSegment(5));
+      }
+      return;
+    }
+
+    this.decayWheelAccumulator();
+  }
+
+  private consumeWheelEvent(event: WheelEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }
+
+  private accumulateWheel(delta: number, onThreshold: () => void) {
+    this.wheelAccumulator += Math.min(Math.abs(delta), 120);
+    if (this.wheelAccumulator < this.wheelAdvanceThreshold) return;
+
+    this.wheelAccumulator = 0;
+    onThreshold();
+    if (this.active && !this.finished) this.video.play().catch(() => {});
+  }
+
+  private decayWheelAccumulator() {
+    this.wheelAccumulator = Math.max(0, this.wheelAccumulator - 24);
+  }
+
+  private seekToSegment(index: number) {
+    const segmentCount = this.segments.length;
+    if (segmentCount === 0) return;
+
+    const nextIndex = THREE.MathUtils.clamp(index, 0, segmentCount - 1);
+    const segment = this.segments[nextIndex];
+    if (!segment) return;
+
+    this.currentSegmentIndex = nextIndex;
+    this.finished = false;
+    this.wheelAccumulator = 0;
+    if (!this.hasMetadata) return;
+    this.video.currentTime = segment.start;
+  }
+
+  private updateVideoDebugData() {
+    const segment = this.segments[this.currentSegmentIndex];
+    this.debugData.status.currentSegment = segment ? `${this.currentSegmentIndex + 1}. ${segment.id}` : '';
+    this.debugData.status.currentIndex = this.currentSegmentIndex + 1;
+    this.debugData.status.currentTime = this.video.currentTime || 0;
+    this.debugData.status.duration = Number.isFinite(this.video.duration) ? this.video.duration : 0;
+    this.debugData.status.waitingForScroll = !!segment && segment.next === 'scroll';
+    this.debugData.status.playingReverseClip = segment?.next === 'loop2' || segment?.next === 'loop4';
+    this.debugData.status.finished = this.finished;
+    this.debugData.status.active = this.active;
+  }
+
   dispose() {
+    window.removeEventListener('wheel', this.wheelGestureHandler, { capture: true });
     this.video.pause();
     this.video.src = '';
     this.video.load();
@@ -173,4 +404,8 @@ export class VideoScene implements SceneBase {
     this.material.dispose();
     this.mesh.geometry.dispose();
   }
+}
+
+export function isVideoDebugScene(scene: SceneBase): scene is VideoScene {
+  return scene instanceof VideoScene;
 }

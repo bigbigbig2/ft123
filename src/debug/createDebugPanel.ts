@@ -14,6 +14,7 @@ import type { SceneBase } from '../scenes/SceneBase';
 import { isEarthDebugScene } from '../scenes/EarthScene';
 import type { EarthDebugSingleLightState } from '../scenes/EarthScene';
 import { isScene3DebugScene } from '../scenes/Scene3CityScene';
+import { isVideoDebugScene } from '../scenes/VideoScene';
 
 export interface DebugPanelOptions {
   engine: Engine;
@@ -148,6 +149,42 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
   scrollFolder
     .addBinding(scrollParams, 'wheelDeltaClamp', { min: 12, max: 240, step: 1, label: '滚轮上限' })
     .on('change', () => opts.scroll.applyDebugParams(scrollParams));
+
+  const videoScene = opts.sections.find(isVideoDebugScene);
+  if (videoScene) {
+    const videoDebug = videoScene.getVideoDebugData();
+    const videoActions = { jumpTarget: 1 };
+    const videoFolder = pane.addFolder({ title: 'Intro 视频', expanded: false });
+
+    videoFolder.addBinding(videoDebug.status, 'currentSegment', { readonly: true, label: '当前片段' });
+    videoFolder.addBinding(videoDebug.status, 'currentIndex', { readonly: true, label: '片段序号' });
+    videoFolder.addBinding(videoDebug.status, 'currentTime', { readonly: true, label: '当前时间', format: (value) => value.toFixed(3) });
+    videoFolder.addBinding(videoDebug.status, 'duration', { readonly: true, label: '总时长', format: (value) => value.toFixed(3) });
+    videoFolder.addBinding(videoDebug.status, 'waitingForScroll', { readonly: true, label: '等待滚动' });
+    videoFolder.addBinding(videoDebug.status, 'playingReverseClip', { readonly: true, label: '倒放段' });
+    videoFolder.addBinding(videoDebug.status, 'finished', { readonly: true, label: '已完成' });
+    videoFolder.addBinding(videoDebug.status, 'active', { readonly: true, label: '激活中' });
+    videoFolder.addBinding(videoActions, 'jumpTarget', {
+      min: 1,
+      max: Math.max(videoDebug.segments.length, 1),
+      step: 1,
+      label: '目标片段',
+    });
+    videoFolder
+      .addButton({ title: '跳到目标片段开头' })
+      .on('click', () => videoScene.jumpToVideoSegment(videoActions.jumpTarget - 1));
+    videoFolder.addButton({ title: '下一片段' }).on('click', () => videoScene.advanceVideoSegment());
+    videoFolder.addButton({ title: '从头播放' }).on('click', () => videoScene.restartVideoSequence());
+
+    for (const [index, segment] of videoDebug.segments.entries()) {
+      const segmentFolder = videoFolder.addFolder({ title: `${index + 1}. ${segment.id}`, expanded: false });
+      segmentFolder.addBinding(segment, 'start', { min: 0, max: 35, step: 1 / 30, label: '开始' }).on('change', () => videoScene.applyVideoDebug());
+      segmentFolder.addBinding(segment, 'end', { min: 0, max: 35, step: 1 / 30, label: '结束' }).on('change', () => videoScene.applyVideoDebug());
+      segmentFolder.addBinding(segment, 'mode', { readonly: true, label: '模式' });
+      segmentFolder.addBinding(segment, 'next', { readonly: true, label: '推进' });
+      segmentFolder.addButton({ title: '跳到片段开头' }).on('click', () => videoScene.jumpToVideoSegment(index));
+    }
+  }
 
   const earthScene = opts.sections.find(isEarthDebugScene);
   if (earthScene) {
@@ -499,6 +536,7 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
       runtime.sceneProgress = frame.sceneProgress;
       runtime.transitionProgress = frame.transitionProgress;
       runtime.mix = frame.mix;
+      videoScene?.getVideoDebugData();
 
       const now = performance.now();
       if (visible && now - lastRefresh > 100) {

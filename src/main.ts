@@ -8,7 +8,8 @@ import { ScrollRig } from './scroll/ScrollRig';
 import { SCROLL_STAGE_HEIGHT_VH, TIMELINE_SEGMENTS, createTimelineLayout } from './scroll/timelineConfig';
 import { TimelineDirector } from './scroll/TimelineDirector';
 import { EarthOverlay, getEarthMistStrength } from './ui/EarthOverlay';
-import { VideoScene } from './scenes/VideoScene';
+import { IntroVideoOverlay } from './ui/IntroVideoOverlay';
+import { VideoScene, type VideoSceneSegment } from './scenes/VideoScene';
 import { createEarthScene } from './scenes/EarthScene';
 import { createScene2 } from './scenes/placeholders';
 import { createScene3CityScene } from './scenes/Scene3CityScene';
@@ -16,17 +17,31 @@ import { loadKTX2Texture } from './utils/loaders';
 import { damp } from './scroll/math';
 
 // ── 资源路径配置 ────────────────────────────────────────────────
-const VIDEO_SRC = '/videos/oceans.mp4';
+const VIDEO_SRC = '/videoScene/long2.mp4';
 const SCROLL_NOISE = '/textures/runtime/scroll-datatexture.ktx2';
 const BLUE_NOISE = '/textures/runtime/blue-8-128-rgb.ktx2';
 const PERLIN_DATA = '/textures/detail/perlin-datatexture.ktx2';
 const DOT_PATTERN = '/textures/cubes/dot_pattern.ktx2';
 
 const BOOT_LOADER_HIDE_DURATION_MS = 750;
+const INTRO_SCROLL_GATE_EPSILON = 0.0005;
+
+const frameTime = (seconds: number, frames = 0) => seconds + frames / 30;
+
+const INTRO_VIDEO_SEGMENTS: VideoSceneSegment[] = [
+  { id: 'opening', start: frameTime(0, 0), end: frameTime(2, 1), mode: 'once', next: 'auto' },
+  { id: 'metroLoop', start: frameTime(2, 1), end: frameTime(12, 0), mode: 'loop', next: 'scroll' },
+  { id: 'afterMetro', start: frameTime(12, 0), end: frameTime(14, 0), mode: 'once', next: 'auto' },
+  { id: 'secondLoop', start: frameTime(14, 0), end: frameTime(22, 6), mode: 'loop', next: 'scroll' },
+  { id: 'ending', start: frameTime(22, 6), end: frameTime(25, 21), mode: 'once', next: 'finish' },
+  { id: 'reverse3ToLoop2', start: frameTime(25, 21), end: frameTime(27, 20), mode: 'once', next: 'loop2' },
+  { id: 'reverse5ToLoop4', start: frameTime(27, 20), end: frameTime(31, 6), mode: 'once', next: 'loop4' },
+];
 
 // ── DOM 元素获取 ────────────────────────────────────────────────
 const bootLoader = document.querySelector<HTMLElement>('[data-boot]');
 const bootLabel = document.querySelector<HTMLElement>('[data-boot-label]');
+const introVideoOverlayElement = document.querySelector<HTMLElement>('[data-intro-video-overlay]');
 const earthOverlayElement = document.querySelector<HTMLElement>('[data-earth-overlay]');
 const scene3OverlayElement = document.querySelector<HTMLElement>('[data-scene3-overlay]');
 
@@ -120,6 +135,7 @@ async function bootstrap() {
     name: 'intro-video',
     fit: 'cover',
     muted: true,
+    segments: INTRO_VIDEO_SEGMENTS,
   });
   const [earthScene, scene1] = await Promise.all([
     createEarthScene(),
@@ -175,6 +191,7 @@ async function bootstrap() {
     ? introSegment.start + (introSegment.end - introSegment.start) * 0.5
     : 0;
   const earthOverlay = new EarthOverlay(earthOverlayElement, { brandStartProgress });
+  const introVideoOverlay = new IntroVideoOverlay(introVideoOverlayElement, videoScene);
   const scene3Overlay = new EarthOverlay(scene3OverlayElement, { brandEnabled: false });
   const debugPanel = createDebugPanel({
     engine,
@@ -198,12 +215,19 @@ async function bootstrap() {
 
     // b. 获取滚动系统的最新状态
     const scrollState = scroll.getState();
+    const introGateProgress = introSegment ? introSegment.end - INTRO_SCROLL_GATE_EPSILON : 1;
+    const introLocked = !videoScene.isFinished() && scrollState.progress > introGateProgress;
+    const timelineProgress = introLocked ? introGateProgress : scrollState.progress;
+
+    if (introLocked) {
+      scroll.scrollToProgress(introGateProgress, { immediate: true });
+    }
 
     // c. 对全局进度进行“二次阻尼”处理。
     // 虽然 Lenis 已经有惯性，但通过对最终推给“导演”的进度再加一层 damp，
     // 可以产生更厚重的“阻尼感”，尤其是在地球出现这种大场景切换时。
     // 提高到 12，增加响应速度，使其更接近 OrbitControls 那种灵动但丝滑的追赶感。
-    smoothedProgress = damp(smoothedProgress, scrollState.progress, 12, delta);
+    smoothedProgress = damp(smoothedProgress, timelineProgress, 12, delta);
 
     // d. 导演类根据阻尼后的进度，计算出这一帧的“剧本”
     const frame = director.update(smoothedProgress, scrollState.velocity);
@@ -223,6 +247,7 @@ async function bootstrap() {
     transition.setSceneMistStrength(getEarthMistStrength(earthState));
 
     // 更新屏幕 UI 覆盖层
+    introVideoOverlay.update(delta);
     earthOverlay.update(earthState, frame);
     scene3Overlay.update(scene3State, frame);
     // 更新调试面板数据
@@ -251,6 +276,7 @@ async function bootstrap() {
     director,
     transition,
     backdrop,
+    introVideoOverlay,
     earthOverlay,
     scene3Overlay,
     debugPanel,
