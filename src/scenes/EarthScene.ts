@@ -32,6 +32,9 @@ const ROOT_INTRO_ROT_Y_START = -0.22;
 const ROOT_INTRO_ROT_Y_END = 0.08;
 const BOTTOM_HUD_RENDER_ORDER = -20;
 const RING_TEXT_RENDER_ORDER = 28;
+const EARTH_EXIT_LIFT_Y = 0.35;
+const EARTH_EXIT_SCALE = 1;
+const EARTH_EXIT_FOV_OFFSET = 4;
 const RING_LAYER_KEYS = ['inner', 'middle', 'outer'] as const;
 const RING_TEXTURE_FACE_KEYS = ['face3', 'face8', 'face9'] as const;
 
@@ -1319,13 +1322,14 @@ export async function createEarthScene() {
   }
 
   /** 鐩告満鏃堕棿绾匡細澶勭悊鎷夎繙/闈犺繎鍜岃瑙掑钩绉?*/
-  const applyCameraTimeline = ({ pullBack }: EarthTimeline) => {
+  const applyCameraTimeline = ({ pullBack }: EarthTimeline, exitProgress: number) => {
     scene.camera.position.set(
       THREE.MathUtils.lerp(cameraTimeline.nearX, cameraTimeline.farX, pullBack),
       THREE.MathUtils.lerp(cameraTimeline.nearY, cameraTimeline.farY, pullBack),
       THREE.MathUtils.lerp(cameraTimeline.nearZ, cameraTimeline.farZ, pullBack),
     );
-    scene.camera.fov = THREE.MathUtils.lerp(cameraTimeline.nearFov, cameraTimeline.farFov, pullBack);
+    const timelineFov = THREE.MathUtils.lerp(cameraTimeline.nearFov, cameraTimeline.farFov, pullBack);
+    scene.camera.fov = timelineFov + exitProgress * EARTH_EXIT_FOV_OFFSET;
     scene.camera.updateProjectionMatrix();
     
     cameraLookAt.set(0, THREE.MathUtils.lerp(cameraTimeline.lookAtNearY, cameraTimeline.lookAtFarY, pullBack), 0);
@@ -1333,9 +1337,11 @@ export async function createEarthScene() {
   };
 
   /** 妯″瀷鏃堕棿绾匡細澶勭悊鍗囪捣銆佺缉鏀惧拰鑷浆鍒囨崲 */
-  const applyModelTimeline = ({ liftProgress, pullBack, scrollSpin, spinComplete }: EarthTimeline) => {
-    scene.modelRoot.position.y = baseModelY + THREE.MathUtils.lerp(motionTimeline.liftStartY, motionTimeline.liftEndY, liftProgress);
-    scene.modelRoot.scale.setScalar(baseModelScale * THREE.MathUtils.lerp(motionTimeline.scaleStart, motionTimeline.scaleEnd, pullBack));
+  const applyModelTimeline = ({ liftProgress, pullBack, scrollSpin, spinComplete }: EarthTimeline, exitProgress: number) => {
+    const timelineY = baseModelY + THREE.MathUtils.lerp(motionTimeline.liftStartY, motionTimeline.liftEndY, liftProgress);
+    const timelineScale = baseModelScale * THREE.MathUtils.lerp(motionTimeline.scaleStart, motionTimeline.scaleEnd, pullBack);
+    scene.modelRoot.position.y = timelineY + exitProgress * EARTH_EXIT_LIFT_Y;
+    scene.modelRoot.scale.setScalar(timelineScale * THREE.MathUtils.lerp(1, EARTH_EXIT_SCALE, exitProgress));
     scene.modelRoot.rotation.x = THREE.MathUtils.lerp(motionTimeline.modelRotXStart, motionTimeline.modelRotXEnd, pullBack);
     root.rotation.y = THREE.MathUtils.lerp(motionTimeline.rootRotYStart, motionTimeline.rootRotYEnd, pullBack);
 
@@ -1395,9 +1401,10 @@ export async function createEarthScene() {
 
     // 鍏抽敭锛氬皢褰撳墠婊氬姩鐘舵€佹槧灏勪负鍦扮悆涓撳睘鐨勬椂闂寸嚎鍙傛暟
     const timeline = getEarthTimeline(effectiveState, timelineConfig);
+    const exitProgress = THREE.MathUtils.smoothstep(effectiveState.leave, 0, 0.75);
 
-    applyCameraTimeline(timeline);
-    applyModelTimeline(timeline);
+    applyCameraTimeline(timeline, exitProgress);
+    applyModelTimeline(timeline, exitProgress);
     applyStageTimeline(timeline);
   }
 

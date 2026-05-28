@@ -101,13 +101,13 @@ export class TransitionRenderer implements EngineView {
     this.renderTargetB = createRenderTarget(1, 1);
 
     this.debugParams = {
-      chromaticStrength: opts.chromaticStrength ?? 0.58,
+      chromaticStrength: opts.chromaticStrength ?? 0.75,
       edgeSoftness: opts.edgeSoftness ?? 1,
-      smearStrength: 0.78,
-      smearLength: 0.18,
+      smearStrength: 1.05,
+      smearLength: 0.22,
       smearAngle: 1.5708, // 默认为 90度 (Math.PI/2)，产生垂直向下的拖尾效果
-      fogWashStrength: 0.88,
-      sceneBRevealStart: 0.28,
+      fogWashStrength: 1.05,
+      sceneBRevealStart: 0.58,
     };
 
     // 初始化合成材质，所有转场合成 Uniforms 都定义在这里

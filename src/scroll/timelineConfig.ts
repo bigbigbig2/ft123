@@ -80,7 +80,7 @@ export const TIMELINE_SEGMENTS: TimelineSegmentConfig[] = [
     from: 'earth',
     to: 'scene1',
     label: '地球 -> 场景 1',
-    duration: 0.3,
+    duration: 0.45,
   },
   {
     type: 'scene',
