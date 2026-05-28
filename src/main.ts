@@ -14,7 +14,7 @@ import { createEarthScene } from './scenes/EarthScene';
 import { createScene2 } from './scenes/placeholders';
 import { createScene3CityScene } from './scenes/Scene3CityScene';
 import { loadKTX2Texture } from './utils/loaders';
-import { damp } from './scroll/math';
+import { damp, smoothstep } from './scroll/math';
 
 // ── 资源路径配置 ────────────────────────────────────────────────
 const VIDEO_SRC = '/videoScene/long2.mp4';
@@ -25,6 +25,8 @@ const DOT_PATTERN = '/textures/cubes/dot_pattern.ktx2';
 
 const BOOT_LOADER_HIDE_DURATION_MS = 750;
 const INTRO_SCROLL_GATE_EPSILON = 0.0005;
+const INTRO_AUTO_EARTH_SCENE_PROGRESS = 0.006;
+const INTRO_AUTO_EARTH_SCROLL_DURATION = 1.45;
 
 const frameTime = (seconds: number, frames = 0) => seconds + frames / 30;
 
@@ -147,6 +149,10 @@ async function bootstrap() {
   // 4. 初始化显式滚动时间轴
   // scene 段负责场景自己的内容进度，transition 段负责两个场景之间的混合。
   const timeline = createTimelineLayout(TIMELINE_SEGMENTS);
+  const earthSegment = timeline.find((segment) => segment.type === 'scene' && segment.sceneName === 'earth');
+  const introAutoEarthProgress = earthSegment
+    ? earthSegment.start + (earthSegment.end - earthSegment.start) * INTRO_AUTO_EARTH_SCENE_PROGRESS
+    : 0.231;
 
   // 时间线导演负责协调各个场景的混合
   const director = new TimelineDirector(sections, timeline);
@@ -207,6 +213,7 @@ async function bootstrap() {
 
   // 7. 绑定核心循环钩子
   let smoothedProgress = 0;
+  let didAutoScrollToEarth = false;
 
   engine.onTick((delta, elapsed, time) => {
     // a. 手动驱动滚动系统更新，确保滚动计算与 WebGL 渲染在同个 RAF 周期内，彻底消除抖动。
@@ -215,11 +222,24 @@ async function bootstrap() {
     // b. 获取滚动系统的最新状态
     const scrollState = scroll.getState();
     const introGateProgress = introSegment ? introSegment.end - INTRO_SCROLL_GATE_EPSILON : 1;
-    const introLocked = !videoScene.isFinished() && scrollState.progress > introGateProgress;
+    const introFinished = videoScene.isFinished();
+    if (!introFinished) didAutoScrollToEarth = false;
+
+    const introLocked = !introFinished && scrollState.progress > introGateProgress;
     const timelineProgress = introLocked ? introGateProgress : scrollState.progress;
 
     if (introLocked) {
       scroll.scrollToProgress(introGateProgress, { immediate: true });
+    } else if (
+      introFinished &&
+      !didAutoScrollToEarth &&
+      scrollState.progress < introAutoEarthProgress - INTRO_SCROLL_GATE_EPSILON
+    ) {
+      didAutoScrollToEarth = true;
+      scroll.scrollToProgress(introAutoEarthProgress, {
+        duration: INTRO_AUTO_EARTH_SCROLL_DURATION,
+        easing: (value) => smoothstep(0, 1, value),
+      });
     }
 
     // c. 对全局进度进行“二次阻尼”处理。

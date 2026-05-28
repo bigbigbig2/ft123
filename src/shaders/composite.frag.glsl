@@ -155,7 +155,7 @@ void main() {
         uSmearLength * uSmearStrength * (0.16 + peak * 0.84) * velocityBoost,
         chroma
       )
-    : sampleSafe(tSceneA, vUv);
+    : sampleChromaticStill(tSceneA, vUv, 0.0);
 
   vec4 sceneB = sampleChromaticStill(
     tSceneB,

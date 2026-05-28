@@ -181,13 +181,16 @@ export class ScrollRig {
   /**
    * 编程式滚动：平滑滚动到指定的 0..1 进度位置
    */
-  scrollToProgress(progress: number, opts: { immediate?: boolean; duration?: number } = {}) {
+  scrollToProgress(
+    progress: number,
+    opts: { immediate?: boolean; duration?: number; easing?: (value: number) => number } = {},
+  ) {
     // 换算 0..1 到像素位置
     const target = clamp(progress) * ScrollTrigger.maxScroll(window);
     this.lenis.scrollTo(target, {
       immediate: opts.immediate,
       duration: opts.duration ?? 0.58,
-      easing: easeOutExpo,
+      easing: opts.easing ?? easeOutExpo,
       lock: false,
     });
   }
