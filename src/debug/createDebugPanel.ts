@@ -453,11 +453,11 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     .on('change', (event) => opts.transition.setSceneBRevealStart(event.value));
 
   const backdropParams = {
-    color1: '#a3b0cf',
-    color2: '#7c8699',
-    dotStrength: 1,
-    blueNoiseStrength: 0.018,
-    centerGlowStrength: 0.5,
+    color1: '#bdc1d8',
+    color2: '#7c818c',
+    dotStrength: 2,
+    blueNoiseStrength: 0.042,
+    centerGlowStrength: 0.37,
   };
   const backdropFolder = pane.addFolder({ title: '共享背景', expanded: false });
   backdropFolder.addBinding(backdropParams, 'color1', { label: '颜色 1' }).on('change', (event) => opts.backdrop.setColor1(event.value));

@@ -932,7 +932,7 @@ export async function createEarthScene() {
       ring: {
         autoRotateEnabled: true,
         autoRotateSpeed: -0.25,
-        initialRotationY: 0.068,
+        initialRotationY: -2,
       },
       ringLayers: {
         enabled: true,
@@ -955,17 +955,17 @@ export async function createEarthScene() {
       earth: {
         autoRotateEnabled: true,
         autoRotateSpeed: 0.25,
-        initialRotationY: -1.229,
+        initialRotationY: -0.68,
       },
     },
     uiTransform: {
       offsetX: 0,
-      offsetY: 0,
+      offsetY: 0.5,
       offsetZ: 0,
-      scale: 1,
+      scale: 0.9,
     },
     earthTransform: {
-      scale: 0.85,
+      scale: 0.95,
     },
     bottomHud: {
       visible: true,
@@ -974,7 +974,7 @@ export async function createEarthScene() {
       brightness: 4,
       scale: 1.9,
       tiltDeg: -78.4,
-      positionY: -1.67,
+      positionY: -1.7,
       positionZ: -5,
       speed: 4,
     },
