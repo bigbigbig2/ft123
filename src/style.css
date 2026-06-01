@@ -229,9 +229,9 @@ body::-webkit-scrollbar {
 .earth-overlay__brand {
   --brand-x: 4px;
   --brand-y: 4px;
-  --brand-width: 980px;
-  --brand-shift-x: -260px;
-  --brand-shift-y: -228px;
+  --brand-width: 560px;
+  --brand-shift-x: 0px;
+  --brand-shift-y: 0px;
   position: absolute; 
   top: var(--brand-y);
   left: var(--brand-x);
@@ -351,9 +351,9 @@ body::-webkit-scrollbar {
   .earth-overlay__brand {
     --brand-x: 4px;
     --brand-y: 4px;
-    --brand-width: 740px;
-    --brand-shift-x: -228px;
-    --brand-shift-y: -180px;
+    --brand-width: 440px;
+    --brand-shift-x: 0px;
+    --brand-shift-y: 0px;
   }
 
   .earth-overlay__brand-video {
@@ -393,9 +393,9 @@ body::-webkit-scrollbar {
   .earth-overlay__brand {
     --brand-x: 4px;
     --brand-y: 4px;
-    --brand-width: 540px;
-    --brand-shift-x: -166px;
-    --brand-shift-y: -131px;
+    --brand-width: 320px;
+    --brand-shift-x: 0px;
+    --brand-shift-y: 0px;
   }
 
   .earth-overlay__brand-video {
