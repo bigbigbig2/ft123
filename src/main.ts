@@ -29,6 +29,7 @@ const INTRO_AUTO_EARTH_SCENE_PROGRESS = 0.006;
 const INTRO_AUTO_EARTH_SCROLL_DURATION = 1.45;
 
 const frameTime = (seconds: number, frames = 0) => seconds + frames / 30;
+const frameDuration = (frames: number) => frames / 30;
 
 const INTRO_VIDEO_SEGMENTS: VideoSceneSegment[] = [
   { id: 'opening', start: frameTime(0, 0), end: frameTime(2, 1), mode: 'once', next: 'auto' },
@@ -36,7 +37,7 @@ const INTRO_VIDEO_SEGMENTS: VideoSceneSegment[] = [
   { id: 'afterMetro', start: frameTime(12, 0), end: frameTime(14, 0), mode: 'once', next: 'auto' },
   { id: 'secondLoop', start: frameTime(14, 0), end: frameTime(22, 6), mode: 'loop', next: 'scroll' },
   { id: 'ending', start: frameTime(22, 6), end: frameTime(25, 21), mode: 'once', next: 'finish' },
-  { id: 'reverse3ToLoop2', start: frameTime(25, 21), end: frameTime(27, 20), mode: 'once', next: 'loop2' },
+  { id: 'reverse3ToLoop2', start: frameTime(25, 21), end: frameTime(27, 20), endGuard: frameDuration(2), mode: 'once', next: 'loop2' },
   { id: 'reverse5ToLoop4', start: frameTime(27, 20), end: frameTime(31, 6), mode: 'once', next: 'loop4' },
 ];
 

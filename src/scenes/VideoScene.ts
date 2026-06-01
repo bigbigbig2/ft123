@@ -20,6 +20,7 @@ export interface VideoSceneSegment {
   id: string;
   start: number;
   end: number;
+  endGuard?: number;
   mode: 'once' | 'loop';
   next: 'auto' | 'scroll' | 'finish' | 'loop2' | 'loop4';
 }
@@ -281,12 +282,18 @@ export class VideoScene implements SceneBase {
   }
 
   private getSegmentPlaybackEnd(segment: VideoSceneSegment) {
+    const guardedEnd = (guard: number) => Math.max(segment.start, segment.end - Math.max(0, guard));
+
+    if (typeof segment.endGuard === 'number') {
+      return guardedEnd(segment.endGuard);
+    }
+
     if (segment.next === 'finish') {
-      return Math.max(segment.start, segment.end - this.finishSegmentEndGuard);
+      return guardedEnd(this.finishSegmentEndGuard);
     }
 
     if (segment.next === 'loop2' || segment.next === 'loop4') {
-      return Math.max(segment.start, segment.end - this.reverseSegmentEndGuard);
+      return guardedEnd(this.reverseSegmentEndGuard);
     }
 
     return segment.end;
