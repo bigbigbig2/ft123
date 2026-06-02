@@ -11,6 +11,7 @@ const BUILD_MODEL_URL = `${SCENE3_MODEL_ROOT}/build.gltf`;
 const DRONE_MODEL_URL = `${SCENE3_MODEL_ROOT}/drone.gltf`;
 const LEFT_CARD_VIDEO_URL = `${SCENE3_MODEL_ROOT}/left.webm`;
 const RIGHT_CARD_VIDEO_URL = `${SCENE3_MODEL_ROOT}/right.webm`;
+const SCAN_BEAM_VIDEO_URL = `${SCENE3_MODEL_ROOT}/WipeOut.webm`;
 const ENVIRONMENT_MAP_URL = `${SCENE3_MODEL_ROOT}/tex/HDRI_STUDIO_vol2_003.exr`;
 const BASE_NORMAL_MAP_URL = `${SCENE3_MODEL_ROOT}/tex/normal.jpg`;
 const MODEL_DESIRED_SIZE = 3.45;
@@ -18,6 +19,13 @@ const WINDOW_NODE_KEYWORD = '\u7a97\u6237';
 const BASE_NODE_NAMES = new Set(Array.from({ length: 9 }, (_, index) => String(index + 1)));
 const SCAN_POINTS_PER_BEAM = 1800;
 const SCAN_POINT_RENDER_ORDER = 24;
+const SCAN_BEAM_RENDER_ORDER = 24;
+const SCAN_BEAM_BLACK_CUTOFF = 0.075;
+const SCAN_BEAM_BLACK_FEATHER = 0.055;
+const SCAN_BEAM_BRIGHTNESS = 2.15;
+const SCAN_BEAM_VIDEO_ASPECT = 4 / 3;
+const SCAN_BEAM_PLANE_SCALE = 1.0;
+const DRONE_NODE_ROTATION_OFFSET_DEG = { x: -90, y: 0, z: 180 };
 const VIDEO_CARD_RENDER_ORDER = 6;
 const VIDEO_CARD_BLACK_CUTOFF = 0.025;
 const VIDEO_CARD_BLACK_FEATHER = 0.14;
@@ -59,6 +67,23 @@ export interface Scene3DroneDebugState {
   rotationYDeg: number;
 }
 
+export interface Scene3ScanBeamDebugState {
+  visible: boolean;
+  opacity: number;
+  brightness: number;
+  blackCutoff: number;
+  blackFeather: number;
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  anchorX: number;
+  anchorY: number;
+  rotationXDeg: number;
+  rotationYDeg: number;
+  rotationZDeg: number;
+  scale: number;
+}
+
 export interface Scene3DebugPostState {
   enabled: boolean;
   toneMappingMode: Scene3PostToneMappingMode;
@@ -80,6 +105,7 @@ export interface Scene3DebugData {
   lighting: Scene3LightingDebugState;
   post: Scene3DebugPostState;
   drone: Scene3DroneDebugState;
+  scanBeam: Scene3ScanBeamDebugState;
   stage: Scene3StageDebugState;
   videoCards: Scene3VideoCardsDebugState;
   bounds: Scene3BoundsDebugState;
@@ -156,6 +182,12 @@ interface Scene3VideoCard {
   aspect: number;
 }
 
+interface Scene3ScanBeamPlaneMeta {
+  geometry: THREE.BufferGeometry;
+  center: THREE.Vector3;
+  height: number;
+}
+
 function createScene3BaseNormalMap() {
   const texture = new THREE.TextureLoader().load(BASE_NORMAL_MAP_URL);
   texture.name = 'Scene3BaseNormalMap';
@@ -201,6 +233,22 @@ function createScene3DebugData(): Scene3DebugData {
       positionY: 630,
       positionZ: -10,
       rotationYDeg: 180,
+    },
+    scanBeam: {
+      visible: true,
+      opacity: 0.8,
+      brightness: 1.76,
+      blackCutoff: 0.223,
+      blackFeather: 0.12,
+      offsetX: 0,
+      offsetY: 0,
+      offsetZ: 1.7,
+      anchorX: -0.033,
+      anchorY: -0.109,
+      rotationXDeg: -39,
+      rotationYDeg: -4,
+      rotationZDeg: 1,
+      scale: 1,
     },
     stage: {
       positionX: 0,
@@ -289,6 +337,9 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     normalScale: new THREE.Vector2(0.72, 0.72),
     side: THREE.DoubleSide,
   });
+  private readonly scanBeamVideo = this.createLoopingVideo(SCAN_BEAM_VIDEO_URL);
+  private readonly scanBeamTexture = this.createScene3VideoTexture(this.scanBeamVideo, 'Scene3ScanBeamVideoTexture');
+  private readonly scanBeamVideoMaterial = this.createScanBeamVideoMaterial();
   private readonly hiddenScanBeamMaterial = new THREE.MeshBasicMaterial({
     name: 'Scene3HiddenScanBeamMaterial',
     transparent: true,
@@ -311,6 +362,8 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     toneMapped: false,
   });
   private readonly scanPointGeometries: THREE.BufferGeometry[] = [];
+  private readonly scanBeamPlaneGeometries: THREE.BufferGeometry[] = [];
+  private readonly scanBeamVideoPlanes: THREE.Mesh[] = [];
   private readonly cityBounds = new THREE.Box3();
   private readonly cityBoundsCenter = new THREE.Vector3();
   private readonly cityBoundsSize = new THREE.Vector3(1, 1, 1);
@@ -330,6 +383,12 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
   private scene3PostPipeline: ScenePostPipeline | null = null;
   private droneRoot: THREE.Object3D | null = null;
   private droneTransformRoot: THREE.Group | null = null;
+  private droneNode2: THREE.Object3D | null = null;
+  private droneNode113: THREE.Object3D | null = null;
+  private readonly droneNode2BaseQuaternion = new THREE.Quaternion();
+  private readonly droneNode113BaseQuaternion = new THREE.Quaternion();
+  private readonly droneNodeDebugEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+  private readonly droneNodeDebugQuaternion = new THREE.Quaternion();
   private sceneActive = false;
   private enterReveal = 0;
   private exitLift = 0;
@@ -359,6 +418,7 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     const contentRoot = new THREE.Group();
     contentRoot.name = 'Scene3CityContent';
     this.droneRoot = drone.scene;
+    this.resolveDroneDebugNodes(drone);
     this.droneTransformRoot = new THREE.Group();
     this.droneTransformRoot.name = 'Scene3DroneTransformRoot';
     this.droneTransformRoot.add(this.droneRoot);
@@ -393,12 +453,14 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     this.addSceneAccentLights();
     this.applyScene3Debug();
     this.setProgress(0);
+    this.playScanBeamVideo();
   }
 
   setActive(active: boolean) {
     super.setActive(active);
     this.sceneActive = active;
 
+    this.playScanBeamVideo();
     this.syncVideoCardPlayback();
   }
 
@@ -437,9 +499,13 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
       this.scene.environment = null;
     }
     this.environmentTexture?.dispose();
+    this.disposeScene3Video(this.scanBeamVideo);
+    this.scanBeamTexture.dispose();
+    this.scanBeamVideoMaterial.dispose();
     this.hiddenScanBeamMaterial.dispose();
     this.scanPointMaterial.dispose();
     this.scanPointGeometries.forEach((geometry) => geometry.dispose());
+    this.scanBeamPlaneGeometries.forEach((geometry) => geometry.dispose());
     this.boundsFrameMaterial.dispose();
     this.boundsFrame?.geometry.dispose();
     this.videoCards.forEach((card) => this.disposeVideoCard(card));
@@ -455,6 +521,7 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     this.applyMaterialDebug();
     this.applyLightingDebug();
     this.applyDroneDebug();
+    this.applyScanBeamDebug();
     this.applyStageDebug();
     this.applyBoundsDebug();
     this.applyVideoCardDebug();
@@ -466,6 +533,7 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     Object.assign(this.debugData.lighting, defaults.lighting);
     Object.assign(this.debugData.post, defaults.post);
     Object.assign(this.debugData.drone, defaults.drone);
+    Object.assign(this.debugData.scanBeam, defaults.scanBeam);
     Object.assign(this.debugData.stage, defaults.stage);
     Object.assign(this.debugData.videoCards.left, defaults.videoCards.left);
     Object.assign(this.debugData.videoCards.right, defaults.videoCards.right);
@@ -479,6 +547,83 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     }
 
     return this.scene3PostPipeline;
+  }
+
+  private createLoopingVideo(url: string) {
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+    video.preload = 'auto';
+    return video;
+  }
+
+  private createScene3VideoTexture(video: HTMLVideoElement, name: string) {
+    const texture = new THREE.VideoTexture(video);
+    texture.name = name;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 8;
+    texture.generateMipmaps = false;
+    return texture;
+  }
+
+  private createScanBeamVideoMaterial() {
+    const material = new THREE.ShaderMaterial({
+      name: 'Scene3ScanBeamVideoMaterial',
+      uniforms: {
+        uMap: { value: this.scanBeamTexture },
+        uOpacity: { value: 0.9 },
+        uBlackCutoff: { value: SCAN_BEAM_BLACK_CUTOFF },
+        uBlackFeather: { value: SCAN_BEAM_BLACK_FEATHER },
+        uBrightness: { value: SCAN_BEAM_BRIGHTNESS },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uMap;
+        uniform float uOpacity;
+        uniform float uBlackCutoff;
+        uniform float uBlackFeather;
+        uniform float uBrightness;
+
+        varying vec2 vUv;
+
+        void main() {
+          vec4 texel = texture2D(uMap, vec2(vUv.x, 1.0 - vUv.y));
+          float luminance = max(max(texel.r, texel.g), texel.b);
+          float matte = smoothstep(uBlackCutoff, uBlackCutoff + uBlackFeather, luminance);
+          matte *= matte;
+          float alpha = texel.a * matte * uOpacity;
+
+          if (alpha < 0.035) discard;
+
+          gl_FragColor = vec4(texel.rgb * uBrightness * matte, alpha);
+          #include <colorspace_fragment>
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    material.forceSinglePass = true;
+    return material;
+  }
+
+  private playScanBeamVideo() {
+    this.scanBeamVideo.play().catch(() => { });
   }
 
   private createVideoCard(
@@ -585,12 +730,16 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
   }
 
   private disposeVideoCard(card: Scene3VideoCard) {
-    card.video.pause();
-    card.video.removeAttribute('src');
-    card.video.load();
+    this.disposeScene3Video(card.video);
     card.texture.dispose();
     card.mesh.geometry.dispose();
     card.mesh.material.dispose();
+  }
+
+  private disposeScene3Video(video: HTMLVideoElement) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
   }
 
   private updateCityBounds(boundsSpaceRoot: THREE.Object3D, cityRoot: THREE.Object3D) {
@@ -611,9 +760,7 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     const mesh = object as THREE.Mesh;
 
     if (mesh.isMesh && mesh.geometry) {
-      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-
-      const geometryBox = mesh.geometry.boundingBox;
+      const geometryBox = this.getFiniteGeometryBox(mesh.geometry);
       if (geometryBox) {
         const matrix = new THREE.Matrix4()
           .copy(root.matrixWorld)
@@ -627,6 +774,31 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     for (const child of object.children) {
       this.expandBoundsFromLocalGeometry(root, child);
     }
+  }
+
+  private getFiniteGeometryBox(geometry: THREE.BufferGeometry) {
+    const position = geometry.getAttribute('position');
+    if (!position) return null;
+
+    const min = new THREE.Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+    const max = new THREE.Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY);
+
+    for (let index = 0; index < position.count; index += 1) {
+      const x = position.getX(index);
+      const y = position.getY(index);
+      const z = position.getZ(index);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+
+      min.x = Math.min(min.x, x);
+      min.y = Math.min(min.y, y);
+      min.z = Math.min(min.z, z);
+      max.x = Math.max(max.x, x);
+      max.y = Math.max(max.y, y);
+      max.z = Math.max(max.z, z);
+    }
+
+    if (!Number.isFinite(min.x) || !Number.isFinite(max.x)) return null;
+    return new THREE.Box3(min, max);
   }
 
   private createBoundsFrame() {
@@ -777,6 +949,9 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
       controller.loopBlend = 0;
       controller.mixer.setTime(scrollDrivenTime);
     }
+
+    this.captureDroneNodeRotationBases();
+    this.applyDroneNodeRotationDebug();
   }
 
   private syncVideoCardPlayback() {
@@ -840,6 +1015,8 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
   }
 
   private configureMeshMaterial(mesh: THREE.Mesh) {
+    if (mesh.userData.scene3GeneratedScanBeamPlane) return;
+
     if (BASE_NODE_NAMES.has(mesh.name)) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -861,13 +1038,121 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     if (isLaser) {
       mesh.castShadow = false;
       mesh.receiveShadow = false;
-      this.replaceScanBeamWithPoints(mesh);
+      this.applyScanBeamVideoMaterial(mesh);
       return;
     }
 
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.material = this.bodyMaterial;
+  }
+
+  private createScanBeamPlaneGeometry(sourceGeometry: THREE.BufferGeometry) {
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3(1, 1, 1);
+    const sourceBox = this.getFiniteGeometryBox(sourceGeometry);
+
+    if (sourceBox) {
+      sourceBox.getCenter(center);
+      sourceBox.getSize(size);
+    }
+
+    const height = Math.max(size.x, size.y, size.z, 1) * SCAN_BEAM_PLANE_SCALE;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+      0, 0,
+      1, 0,
+      1, 1,
+      0, 1,
+    ]), 2));
+    geometry.setIndex([0, 1, 2, 0, 2, 3]);
+    geometry.userData.scene3ScanBeamMeta = { geometry, center: center.clone(), height } satisfies Scene3ScanBeamPlaneMeta;
+    this.updateScanBeamPlaneGeometry(geometry);
+    this.scanBeamPlaneGeometries.push(geometry);
+
+    return geometry;
+  }
+
+  private updateScanBeamPlaneGeometry(geometry: THREE.BufferGeometry) {
+    const meta = geometry.userData.scene3ScanBeamMeta as Scene3ScanBeamPlaneMeta | undefined;
+    const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (!meta || !position) return;
+
+    const { scanBeam } = this.debugData;
+    const height = meta.height * scanBeam.scale;
+    const width = height * SCAN_BEAM_VIDEO_ASPECT;
+    const minX = (-0.5 - scanBeam.anchorX) * width;
+    const maxX = (0.5 - scanBeam.anchorX) * width;
+    const minY = (-0.5 - scanBeam.anchorY) * height;
+    const maxY = (0.5 - scanBeam.anchorY) * height;
+    const z = 0;
+    const values = [
+      minX, minY, z,
+      maxX, minY, z,
+      maxX, maxY, z,
+      minX, maxY, z,
+    ];
+
+    for (let index = 0; index < values.length; index += 1) {
+      position.array[index] = values[index]!;
+    }
+
+    position.needsUpdate = true;
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Math.hypot(width, height));
+  }
+
+  private applyScanBeamVideoMaterial(mesh: THREE.Mesh) {
+    if (!mesh.userData.scene3ScanVideoPlane) {
+      const videoPlane = new THREE.Mesh(this.createScanBeamPlaneGeometry(mesh.geometry), this.scanBeamVideoMaterial);
+      videoPlane.name = `${mesh.name || 'scanBeam'}_video_plane`;
+      videoPlane.castShadow = false;
+      videoPlane.receiveShadow = false;
+      videoPlane.frustumCulled = false;
+      videoPlane.renderOrder = SCAN_BEAM_RENDER_ORDER;
+      videoPlane.userData.scene3GeneratedScanBeamPlane = true;
+      mesh.add(videoPlane);
+      this.scanBeamVideoPlanes.push(videoPlane);
+      mesh.userData.scene3ScanVideoPlane = videoPlane;
+      this.applyScanBeamPlaneDebug(videoPlane);
+    }
+
+    mesh.material = this.hiddenScanBeamMaterial;
+    mesh.renderOrder = SCAN_BEAM_RENDER_ORDER;
+    mesh.frustumCulled = false;
+    mesh.userData.scene3ScanVideo = true;
+  }
+
+  private applyScanBeamPlaneDebug(plane: THREE.Mesh) {
+    const meta = plane.geometry.userData.scene3ScanBeamMeta as Scene3ScanBeamPlaneMeta | undefined;
+    if (!meta) return;
+
+    const { scanBeam } = this.debugData;
+    this.updateScanBeamPlaneGeometry(meta.geometry);
+    plane.visible = scanBeam.visible;
+    plane.position.set(
+      meta.center.x + scanBeam.offsetX,
+      meta.center.y + scanBeam.offsetY,
+      meta.center.z + scanBeam.offsetZ,
+    );
+    plane.rotation.set(
+      THREE.MathUtils.degToRad(scanBeam.rotationXDeg),
+      THREE.MathUtils.degToRad(scanBeam.rotationYDeg),
+      THREE.MathUtils.degToRad(scanBeam.rotationZDeg),
+    );
+  }
+
+  private applyScanBeamDebug() {
+    const { scanBeam } = this.debugData;
+    this.scanBeamVideoMaterial.uniforms.uOpacity.value = scanBeam.opacity;
+    this.scanBeamVideoMaterial.uniforms.uBlackCutoff.value = scanBeam.blackCutoff;
+    this.scanBeamVideoMaterial.uniforms.uBlackFeather.value = scanBeam.blackFeather;
+    this.scanBeamVideoMaterial.uniforms.uBrightness.value = scanBeam.brightness;
+
+    for (const plane of this.scanBeamVideoPlanes) {
+      this.applyScanBeamPlaneDebug(plane);
+    }
   }
 
   private replaceScanBeamWithPoints(mesh: THREE.Mesh) {
@@ -945,6 +1230,9 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
       a.fromBufferAttribute(position, ia);
       b.fromBufferAttribute(position, ib);
       c.fromBufferAttribute(position, ic);
+      if (!Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(a.z)) return;
+      if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.z)) return;
+      if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !Number.isFinite(c.z)) return;
       if (new THREE.Triangle(a, b, c).getArea() <= 0.000001) return;
       triangles.push(new THREE.Triangle(a.clone(), b.clone(), c.clone()));
     };
@@ -960,9 +1248,9 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     }
 
     if (triangles.length === 0) {
-      const box = new THREE.Box3().setFromBufferAttribute(position);
-      const min = box.min;
-      const max = box.max;
+      const box = this.getFiniteGeometryBox(sourceGeometry);
+      const min = box?.min ?? new THREE.Vector3(-0.5, -0.5, 0);
+      const max = box?.max ?? new THREE.Vector3(0.5, 0.5, 0);
       triangles.push(new THREE.Triangle(
         new THREE.Vector3(min.x, min.y, min.z),
         new THREE.Vector3(max.x, min.y, max.z),
@@ -1050,6 +1338,64 @@ export class Scene3CityScene extends ModelScene implements ScenePostProcessable 
     this.droneTransformRoot.scale.setScalar(drone.scale);
     this.droneTransformRoot.position.set(drone.positionX, drone.positionY, drone.positionZ);
     this.droneTransformRoot.rotation.y = THREE.MathUtils.degToRad(drone.rotationYDeg);
+    this.applyDroneNodeRotationDebug();
+  }
+
+  private resolveDroneDebugNodes(gltf: GLTF) {
+    this.droneNode2 = this.findGltfNodeByIndex(gltf, 2);
+    this.droneNode113 = this.findGltfNodeByIndex(gltf, 113);
+    this.captureDroneNodeRotationBases();
+  }
+
+  private findGltfNodeByIndex(gltf: GLTF, nodeIndex: number) {
+    for (const [object, reference] of gltf.parser.associations) {
+      if (reference.nodes === nodeIndex && object instanceof THREE.Object3D) {
+        return object;
+      }
+    }
+
+    return null;
+  }
+
+  private captureDroneNodeRotationBases() {
+    if (this.droneNode2) this.droneNode2BaseQuaternion.copy(this.droneNode2.quaternion);
+    if (this.droneNode113) this.droneNode113BaseQuaternion.copy(this.droneNode113.quaternion);
+  }
+
+  private applyDroneNodeRotationDebug() {
+    this.applyDroneNodeRotationOffset(
+      this.droneNode2,
+      this.droneNode2BaseQuaternion,
+      DRONE_NODE_ROTATION_OFFSET_DEG.x,
+      DRONE_NODE_ROTATION_OFFSET_DEG.y,
+      DRONE_NODE_ROTATION_OFFSET_DEG.z,
+    );
+    this.applyDroneNodeRotationOffset(
+      this.droneNode113,
+      this.droneNode113BaseQuaternion,
+      DRONE_NODE_ROTATION_OFFSET_DEG.x,
+      DRONE_NODE_ROTATION_OFFSET_DEG.y,
+      DRONE_NODE_ROTATION_OFFSET_DEG.z,
+    );
+  }
+
+  private applyDroneNodeRotationOffset(
+    node: THREE.Object3D | null,
+    baseQuaternion: THREE.Quaternion,
+    rotationXDeg: number,
+    rotationYDeg: number,
+    rotationZDeg: number,
+  ) {
+    if (!node) return;
+
+    this.droneNodeDebugEuler.set(
+      THREE.MathUtils.degToRad(rotationXDeg),
+      THREE.MathUtils.degToRad(rotationYDeg),
+      THREE.MathUtils.degToRad(rotationZDeg),
+      'XYZ',
+    );
+    this.droneNodeDebugQuaternion.setFromEuler(this.droneNodeDebugEuler);
+    node.quaternion.copy(baseQuaternion).multiply(this.droneNodeDebugQuaternion);
   }
 
   private applyLightingDebug() {

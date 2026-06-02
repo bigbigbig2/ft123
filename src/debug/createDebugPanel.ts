@@ -441,6 +441,22 @@ export function createDebugPanel(opts: DebugPanelOptions): DebugPanel {
     scene3Drone.addBinding(scene3Debug.drone, 'positionZ', { min: -1000, max: 1000, step: 1, label: '位置 Z' }).on('change', applyScene3Debug);
     scene3Drone.addBinding(scene3Debug.drone, 'rotationYDeg', { min: -360, max: 360, step: 1, label: '旋转 Y' }).on('change', applyScene3Debug);
 
+    const scene3ScanBeam = scene3Folder.addFolder({ title: '无人机扫描光', expanded: true });
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'visible', { label: '显示' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'opacity', { min: 0, max: 2, step: 0.01, label: '透明度' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'brightness', { min: 0, max: 6, step: 0.01, label: '亮度' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'blackCutoff', { min: 0, max: 0.5, step: 0.001, label: '抠黑阈值' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'blackFeather', { min: 0, max: 0.5, step: 0.001, label: '抠黑柔边' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'offsetX', { min: -80, max: 80, step: 0.1, label: '位置 X' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'offsetY', { min: -80, max: 80, step: 0.1, label: '位置 Y' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'offsetZ', { min: -80, max: 80, step: 0.1, label: '位置 Z' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'anchorX', { min: -0.5, max: 0.5, step: 0.001, label: '锚点 X' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'anchorY', { min: -0.5, max: 0.5, step: 0.001, label: '锚点 Y' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'rotationXDeg', { min: -180, max: 180, step: 1, label: '旋转 X' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'rotationYDeg', { min: -180, max: 180, step: 1, label: '旋转 Y' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'rotationZDeg', { min: -180, max: 180, step: 1, label: '旋转 Z' }).on('change', applyScene3Debug);
+    scene3ScanBeam.addBinding(scene3Debug.scanBeam, 'scale', { min: 0.05, max: 5, step: 0.01, label: '缩放' }).on('change', applyScene3Debug);
+
     scene3Folder.addButton({ title: '重置 Scene3 参数' }).on('click', () => {
       scene3Scene.resetScene3Debug();
     });

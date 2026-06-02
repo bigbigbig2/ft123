@@ -309,7 +309,7 @@ function createGlobeMaterial(
 
       vec3 oceanCyanColor = clamp(baseDayColor * vec3(0.84, 1.06, 1.08) + vec3(0.00, 0.08, 0.08), 0.0, 1.0);
       vec3 liftedOceanColor = mix(
-        min(baseDayColor * vec3(0.92, 1.04, 1.18) + vec3(0.00, 0.05, 0.14), vec3(1.0)),
+        min(baseDayColor * vec3(0.92, 0.8, 1.18) + vec3(0.00, 0.05, 0.14), vec3(1.0)),
         oceanCyanColor,
         uOceanCyanShift
       );

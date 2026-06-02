@@ -26,7 +26,9 @@ const DOT_PATTERN = '/textures/cubes/dot_pattern.ktx2';
 const BOOT_LOADER_HIDE_DURATION_MS = 750;
 const INTRO_SCROLL_GATE_EPSILON = 0.0005;
 const INTRO_AUTO_EARTH_SCENE_PROGRESS = 0.006;
-const INTRO_AUTO_EARTH_SCROLL_DURATION = 1.45;
+const INTRO_AUTO_EARTH_SCROLL_DURATION = 0.42;
+const INTRO_AUTO_EARTH_DAMP_BYPASS_MS = 650;
+const INTRO_EARTH_WARMUP_SEGMENT_INDEX = 5;
 
 const frameTime = (seconds: number, frames = 0) => seconds + frames / 30;
 const frameDuration = (frames: number) => frames / 30;
@@ -212,9 +214,56 @@ async function bootstrap() {
   // 将转场合成渲染器设为引擎的主视图
   engine.setView(transition);
 
+  let earthWarmupDone = false;
+  let earthWarmupScheduled = false;
+  const warmupEarthScene = () => {
+    if (earthWarmupDone) return;
+    earthWarmupDone = true;
+
+    try {
+      earthScene.setActive(true);
+      earthScene.setProgress(0);
+      earthScene.setTransitionState({
+        role: 'next',
+        localProgress: 0,
+        blend: 0.001,
+        direction: 1,
+        currentIndex: 1,
+      });
+      earthScene.setScrollState({
+        role: 'next',
+        sceneIndex: 1,
+        local: 0,
+        focus: 1,
+        enter: 1,
+        leave: 0,
+        segmentProgress: 0,
+        transitionProgress: 0.001,
+        velocity: 0,
+        direction: 1,
+      });
+      earthScene.update(0, performance.now() / 1000);
+      transition.warmupScene(engine.renderer, earthScene);
+    } catch (error) {
+      console.warn('[FT] Earth scene warmup failed:', error);
+    }
+  };
+
+  const scheduleEarthWarmup = () => {
+    if (earthWarmupScheduled || earthWarmupDone) return;
+    earthWarmupScheduled = true;
+
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(() => warmupEarthScene(), { timeout: 300 });
+    } else {
+      window.setTimeout(warmupEarthScene, 80);
+    }
+  };
+
   // 7. 绑定核心循环钩子
   let smoothedProgress = 0;
   let didAutoScrollToEarth = false;
+  let autoEarthDampBypassUntil = 0;
 
   engine.onTick((delta, elapsed, time) => {
     // a. 手动驱动滚动系统更新，确保滚动计算与 WebGL 渲染在同个 RAF 周期内，彻底消除抖动。
@@ -224,6 +273,9 @@ async function bootstrap() {
     const scrollState = scroll.getState();
     const introGateProgress = introSegment ? introSegment.end - INTRO_SCROLL_GATE_EPSILON : 1;
     const introFinished = videoScene.isFinished();
+    if (videoScene.getVideoDebugData().status.currentIndex >= INTRO_EARTH_WARMUP_SEGMENT_INDEX) {
+      scheduleEarthWarmup();
+    }
     if (!introFinished) didAutoScrollToEarth = false;
 
     const introLocked = !introFinished && scrollState.progress > introGateProgress;
@@ -237,6 +289,7 @@ async function bootstrap() {
       scrollState.progress < introAutoEarthProgress - INTRO_SCROLL_GATE_EPSILON
     ) {
       didAutoScrollToEarth = true;
+      autoEarthDampBypassUntil = time + INTRO_AUTO_EARTH_DAMP_BYPASS_MS;
       scroll.scrollToProgress(introAutoEarthProgress, {
         duration: INTRO_AUTO_EARTH_SCROLL_DURATION,
         easing: (value) => smoothstep(0, 1, value),
@@ -247,7 +300,9 @@ async function bootstrap() {
     // 虽然 Lenis 已经有惯性，但通过对最终推给“导演”的进度再加一层 damp，
     // 可以产生更厚重的“阻尼感”，尤其是在地球出现这种大场景切换时。
     // 提高到 12，增加响应速度，使其更接近 OrbitControls 那种灵动但丝滑的追赶感。
-    smoothedProgress = damp(smoothedProgress, timelineProgress, 12, delta);
+    smoothedProgress = time < autoEarthDampBypassUntil
+      ? timelineProgress
+      : damp(smoothedProgress, timelineProgress, 12, delta);
 
     // d. 导演类根据阻尼后的进度，计算出这一帧的“剧本”
     const frame = director.update(smoothedProgress, scrollState.velocity);

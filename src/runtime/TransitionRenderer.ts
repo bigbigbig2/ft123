@@ -218,6 +218,22 @@ export class TransitionRenderer implements EngineView {
     this.compositeMaterial.uniforms.uSceneMistStrength.value = clamp01(value);
   }
 
+  warmupScene(renderer: THREE.WebGLRenderer, scene: SceneBase) {
+    const previousTarget = renderer.getRenderTarget();
+    const previousAutoClear = renderer.autoClear;
+    const previousClearColor = renderer.getClearColor(new THREE.Color());
+    const previousClearAlpha = renderer.getClearAlpha();
+
+    renderer.autoClear = false;
+    scene.setSize(this.size.width, this.size.height);
+    renderer.compile(scene.scene, scene.camera);
+    this.renderForegroundToTarget(renderer, scene, this.renderTargetB);
+
+    renderer.setRenderTarget(previousTarget);
+    renderer.setClearColor(previousClearColor, previousClearAlpha);
+    renderer.autoClear = previousAutoClear;
+  }
+
   /** 
    * 更新逻辑：驱动各子场景的 update 方法 
    */
